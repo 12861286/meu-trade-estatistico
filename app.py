@@ -4,67 +4,82 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-st.set_page_config(page_title="Scanner Quant Profissional", layout="wide")
+st.set_page_config(page_title="Scanner Quant Pro - Sugestões", layout="wide")
 
-st.title("🚀 Scanner de Otimização Quantitativa")
+st.title("🚀 Otimizador de Entradas: Estatística de Abertura")
 
 # --- LISTA DE ATIVOS ---
 @st.cache_data
 def carregar_lista_ativos():
-    # Você pode adicionar qualquer ticker da B3 aqui
-    base = ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "MGLU3", "PRIO3", "WEGE3", "RENT3"]
-    return [f"{a}.SA" for a in base]
+    # Adicionei mais alguns ativos líquidos da B3
+    base = ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "MGLU3", "PRIO3", "WEGE3", "RENT3", "GGBR4", "CSNA3"]
+    return sorted([f"{a}.SA" for a in base])
 
 # --- SIDEBAR ---
-st.sidebar.header("Parâmetros do Robô")
+st.sidebar.header("Configurações do Robô")
 ativo = st.sidebar.selectbox("Escolha o Ativo:", carregar_lista_ativos())
-data_inicio = st.sidebar.date_input("Pesquisar desde:", datetime(2021, 1, 1))
-alvo_gain = st.sidebar.number_input("Alvo de Saída (% de lucro):", value=1.0, step=0.1)
+data_inicio = st.sidebar.date_input("Analisar histórico desde:", datetime(2021, 1, 1))
+alvo_gain = st.sidebar.number_input("Alvo de Lucro desejado (%):", value=1.0, step=0.1)
 
-if st.sidebar.button('Encontrar Melhor Entrada'):
-    with st.spinner('Calculando probabilidades...'):
+if st.sidebar.button('Gerar Relatório de Performance'):
+    with st.spinner('Escaneando histórico e calculando probabilidades...'):
         df = yf.download(ativo, start=data_inicio, progress=False)
         
         if not df.empty:
+            # Organização dos dados
             df = df[['Open', 'High', 'Low', 'Close']].copy()
             df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
             df['Gap'] = ((df['Abertura'] / df['Fechamento'].shift(1)) - 1) * 100
-            # Verifica se atingiu o alvo de lucro durante o dia
+            
+            # Cálculo de atingimento do alvo (High vs Abertura)
             df['Atingiu_Alvo'] = ((df['Maxima'] / df['Abertura']) - 1) * 100 >= alvo_gain
             
-            # --- LÓGICA DE OTIMIZAÇÃO ---
-            resultados_otimizacao = []
-            # Testa gaps de -0.5% até -5.0%
-            for teste_gap in [x * -0.5 for x in range(1, 11)]:
+            # --- LOOP DE TESTES (OTIMIZAÇÃO) ---
+            ranking = []
+            # Testa gaps de -0.2% até -4.0% com passo de 0.2%
+            for i in range(1, 21):
+                teste_gap = round(i * -0.2, 2)
                 eventos = df[df['Gap'] <= teste_gap]
-                if len(eventos) >= 5: # Mínimo de 5 ocorrências para ser estatística
+                
+                if len(eventos) >= 5: # Filtro de confiança: no mínimo 5 ocorrências
                     acertos = len(eventos[eventos['Atingiu_Alvo'] == True])
                     taxa = (acertos / len(eventos)) * 100
-                    resultados_otimizacao.append({
-                        "GAP de Entrada": teste_gap,
+                    ranking.append({
+                        "Sugestão": f"GAP abaixo de {teste_gap}%",
+                        "GAP (%)": teste_gap,
                         "Ocorrências": len(eventos),
-                        "Taxa de Acerto": taxa
+                        "Taxa de Acerto": round(taxa, 1)
                     })
             
-            if resultados_otimizacao:
-                df_otimizado = pd.DataFrame(resultados_otimizacao)
-                melhor_estratégia = df_otimizado.sort_values(by="Taxa de Acerto", ascending=False).iloc[0]
+            if ranking:
+                # Ordena pela maior taxa de acerto
+                df_ranking = pd.DataFrame(ranking).sort_values(by="Taxa de Acerto", ascending=False)
+                melhor = df_ranking.iloc[0]
                 
-                # --- EXIBIÇÃO ---
-                st.success(f"### ✨ Melhor Entrada Encontrada para {ativo}")
+                # --- EXIBIÇÃO PRINCIPAL ---
+                st.success(f"### ✨ Melhor Performance Encontrada: {ativo}")
                 
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Melhor GAP de Entrada", f"{melhor_estratégia['GAP de Entrada']}%")
-                c2.metric("Taxa de Acerto", f"{melhor_estratégia['Taxa de Acerto']:.1f}%")
-                c3.metric("Frequência (Dias)", int(melhor_estratégia['Ocorrências']))
+                c1.metric("Melhor GAP de Entrada", f"{melhor['GAP (%)']}%")
+                c2.metric("Taxa de Acerto", f"{melhor['Taxa de Acerto']}%")
+                c3.metric("Amostragem", f"{int(melhor['Ocorrências'])} dias")
 
-                st.info(f"💡 **Conclusão:** Sempre que o ativo {ativo} abriu com GAP de {melhor_estratégia['GAP de Entrada']}% ou mais, ele buscou o seu alvo de {alvo_gain}% em {melhor_estratégia['Taxa de Acerto']:.1f}% das vezes.")
+                # --- NOVA SEÇÃO: SUGESTÕES ADICIONAIS ---
+                st.markdown("---")
+                st.subheader("📋 Outras Sugestões de Entrada para este Ativo")
+                st.write(f"Considerando um alvo de **{alvo_gain}%**, estas foram as melhores variações encontradas:")
+                
+                # Mostra o Top 5 sugestões formatado
+                st.table(df_ranking.head(5)[['Sugestão', 'Ocorrências', 'Taxa de Acerto']])
 
-                # Gráfico de Otimização
-                fig = px.line(df_otimizado, x="GAP de Entrada", y="Taxa de Acerto", 
-                             title="Probabilidade por Nível de GAP", markers=True)
+                # Gráfico de Probabilidade
+                fig = px.bar(df_ranking.sort_values(by="GAP (%)", ascending=False), 
+                            x="GAP (%)", y="Taxa de Acerto", 
+                            title="Probabilidade de Acerto por Nível de GAP",
+                            color="Taxa de Acerto", color_continuous_scale="Viridis")
                 st.plotly_chart(fig, use_container_width=True)
+                
             else:
-                st.warning("Dados insuficientes para encontrar um padrão estatístico.")
+                st.warning("Não encontramos ocorrências suficientes (mínimo 5) para gerar sugestões seguras.")
         else:
-            st.error("Erro ao carregar dados.")
+            st.error("Erro ao buscar dados do ativo.")
