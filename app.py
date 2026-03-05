@@ -6,68 +6,76 @@ from datetime import datetime
 
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
 
+# Título e Estilo
 st.title("🔍 Scanner de Estatística de Abertura")
 
-# --- BARRA LATERAL (FILTROS) ---
+# --- BUSCA AUTOMÁTICA DE ATIVOS ---
+@st.cache_data
+def carregar_lista_ativos():
+    # Lista das principais ações da B3 (pode ser expandida)
+    base_ativos = [
+        "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "MGLU3", "VIIA3", 
+        "HAPV3", "SANB11", "RENT3", "LREN3", "PRIO3", "WEGE3", "SUZB3", "ELET3"
+    ]
+    return [f"{a}.SA" for a in base_ativos]
+
+# --- BARRA LATERAL ---
 st.sidebar.header("Configurações do Backtest")
 
-# 1. Campo de Pesquisa de Ativos (Lista das principais da B3)
-lista_ativos = ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "ABEV3.SA", "BBAS3.SA", "MGLU3.SA", "WINV24.SA"] # Adicione mais aqui
-ativo = st.sidebar.selectbox("Selecione o Ativo:", lista_ativos)
+ativos_disponiveis = carregar_lista_ativos()
+ativo = st.sidebar.selectbox("Selecione ou digite o Ativo:", ativos_disponiveis)
 
-# 2. Data de Início
 data_inicio = st.sidebar.date_input("Data de Início da Pesquisa:", datetime(2020, 1, 1))
 
-# 3. Porcentagem do GAP
-gap_desejado = st.sidebar.number_input("Porcentagem do GAP (ex: -2.0 ou 1.5):", value=-2.0, step=0.1)
+gap_desejado = st.sidebar.number_input("GAP desejado % (ex: -2.0):", value=-2.0, step=0.1)
 
 # --- PROCESSAMENTO ---
 if st.sidebar.button('Rodar Estatística'):
-    with st.spinner('Consultando histórico da B3...'):
-        # Busca os dados
+    with st.spinner('Analisando dados...'):
         df = yf.download(ativo, start=data_inicio, progress=False)
         
         if not df.empty:
-            # Cálculos de GAP e Máxima do Dia
-            df['Gap'] = ((df['Open'] / df['Close'].shift(1)) - 1) * 100
-            df['Max_Apos_Abertura'] = ((df['High'] / df['Open']) - 1) * 100
+            # Organizando os dados para evitar o erro de visualização
+            df = df[['Open', 'High', 'Low', 'Close']].copy()
+            df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
             
-            # Filtrando os dias que tiveram o GAP que você pediu
+            # Cálculos
+            df['Gap'] = ((df['Abertura'] / df['Fechamento'].shift(1)) - 1) * 100
+            df['Max_Apos_Abertura'] = ((df['Maxima'] / df['Abertura']) - 1) * 100
+            
+            # Filtro do GAP
             if gap_desejado < 0:
                 eventos = df[df['Gap'] <= gap_desejado].copy()
             else:
                 eventos = df[df['Gap'] >= gap_desejado].copy()
             
-            total_eventos = len(eventos)
+            # Limpeza para o gráfico (remove valores vazios)
+            eventos = eventos.dropna()
             
-            if total_eventos > 0:
-                # Calculando chances de acerto (se fechou acima da abertura)
-                acertos = len(eventos[eventos['Close'] > eventos['Open']])
-                taxa_acerto = (acertos / total_eventos) * 100
-                maxima_media = eventos['Max_Apos_Abertura'].median()
+            if len(eventos) > 0:
+                # Métricas
+                total = len(eventos)
+                acertos = len(eventos[eventos['Fechamento'] > eventos['Abertura']])
+                taxa_acerto = (acertos / total) * 100
+                max_frequente = eventos['Max_Apos_Abertura'].mode().iloc[0] if not eventos.empty else 0
                 
-                # --- RELATÓRIO ---
                 col1, col2, col3 = st.columns(3)
-                col1.metric("Ocorrências", f"{total_eventos} dias")
-                col2.metric("Taxa de Acerto (Alta)", f"{taxa_acerto:.1f}%")
-                col3.metric("Máxima Média após GAP", f"{maxima_media:.2f}%")
+                col1.metric("Ocorrências", f"{total} dias")
+                col2.metric("Taxa de Acerto", f"{taxa_acerto:.1f}%")
+                col3.metric("Máxima mais Comum", f"{max_frequente:.2f}%")
                 
-                st.subheader(f"📊 Comportamento de {ativo} após GAP de {gap_desejado}%")
+                st.subheader(f"Estatística: {ativo} abrindo com {gap_desejado}% de GAP")
                 
-                # Gráfico Simples de Dispersão
-                fig = px.histogram(eventos, x="Max_Apos_Abertura", 
-                                 title="Distribuição de quanto o papel subiu após abrir nesse GAP",
-                                 labels={'Max_Apos_Abertura': 'Subida após abertura (%)'},
+                # Gráfico Corrigido
+                hist_data = eventos['Max_Apos_Abertura'].astype(float)
+                fig = px.histogram(hist_data, nbins=20, title="Distribuição de Altas após a Abertura",
+                                 labels={'value': 'Subida (%)', 'count': 'Frequência'},
                                  color_discrete_sequence=['#00CC96'])
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Tabela de Detalhes
-                st.write("Últimas ocorrências encontradas:")
-                st.dataframe(eventos[['Gap', 'Max_Apos_Abertura']].tail(10))
+                st.write("### Últimas 10 vezes que isso aconteceu:")
+                st.table(eventos[['Gap', 'Max_Apos_Abertura']].tail(10))
             else:
-                st.warning("Nenhum evento encontrado com esse critério no período selecionado.")
+                st.warning("Nenhum dia encontrado com esse GAP no período.")
         else:
-            st.error("Erro ao buscar dados. Verifique o ticker do ativo.")
-
-else:
-    st.info("Ajuste os filtros à esquerda e clique em 'Rodar Estatística'.")
+            st.error("Ativo não encontrado.")
