@@ -6,11 +6,11 @@ from datetime import datetime
 import pytz
 
 # Configuração da página
-st.set_page_config(page_title="Caçador de Performance B3", layout="wide")
+st.set_page_config(page_title="Scanner Quant Pro - Com Stop", layout="wide")
 
-st.title("🎯 Analisador de GAP e Sugestões de Performance")
+st.title("🎯 Analisador de Performance e Gerenciamento de Risco")
 
-# --- LISTA AMPLIADA DE ATIVOS (QUASE TODA A B3) ---
+# --- LISTA DE ATIVOS ---
 @st.cache_data
 def carregar_lista_ativos():
     ibov = [
@@ -27,83 +27,77 @@ def carregar_lista_ativos():
     ]
     return sorted([f"{a}.SA" for a in ibov])
 
-# --- FUNÇÃO PARA O GAP ATUAL ---
 def obter_gap_hoje(ticker):
     try:
-        # Puxa os últimos 2 dias para comparar
         dados = yf.download(ticker, period="2d", progress=False)
-        if len(dados) < 2:
-            return 0.0, "Dados insuficientes"
-        
-        fechamento_ontem = dados['Close'].iloc[-2]
-        abertura_hoje = dados['Open'].iloc[-1]
-        
-        # Verifica se a data da última linha é hoje
+        if len(dados) < 2: return 0.0, "Dados insuficientes"
+        fechamento_ontem = float(dados['Close'].iloc[-2])
+        abertura_hoje = float(dados['Open'].iloc[-1])
         tz_br = pytz.timezone('America/Sao_Paulo')
         hoje = datetime.now(tz_br).date()
-        data_dados = dados.index[-1].date()
-        
-        if data_dados == hoje:
-            gap = ((abertura_hoje / fechamento_ontem) - 1) * 100
-            return round(gap, 2), "Aberto"
-        else:
-            return 0.0, "Mercado Fechado"
-    except:
-        return 0.0, "Erro"
+        if dados.index[-1].date() == hoje:
+            return round(((abertura_hoje / fechamento_ontem) - 1) * 100, 2), "Aberto"
+        return 0.0, "Mercado Fechado"
+    except: return 0.0, "Erro"
 
-# --- BARRA LATERAL ---
+# --- SIDEBAR ---
 st.sidebar.header("Configuração")
 lista_completa = carregar_lista_ativos()
-ativo = st.sidebar.selectbox("Escolha ou Digite o Ativo:", lista_completa, index=lista_completa.index("PETR4.SA"))
+ativo = st.sidebar.selectbox("Escolha o Ativo:", lista_completa, index=lista_completa.index("PETR4.SA"))
 data_inicio = st.sidebar.date_input("Analisar desde:", datetime(2021, 1, 1))
-gap_digitado = st.sidebar.number_input("Digite o GAP para análise principal (%):", value=-1.0, step=0.1)
+gap_digitado = st.sidebar.number_input("GAP para análise principal (%):", value=-1.0, step=0.1)
 
-# --- MONITOR EM TEMPO REAL (NOVO) ---
 gap_atual, status_mercado = obter_gap_hoje(ativo)
 st.sidebar.markdown("---")
 st.sidebar.subheader("🕒 GAP de Hoje")
-if status_mercado == "Aberto":
-    cor = "green" if gap_atual >= 0 else "red"
-    st.sidebar.markdown(f"<h2 style='color:{cor};'>{gap_atual}%</h2>", unsafe_allow_html=True)
-else:
-    st.sidebar.info(f"Status: {status_mercado}")
+st.sidebar.metric("Valor Atual", f"{gap_atual}%", delta=status_mercado)
 
-# --- BOTÃO DE EXECUÇÃO ---
-if st.sidebar.button('Gerar Relatório Completo'):
-    with st.spinner(f'Analisando {ativo}...'):
+# --- EXECUÇÃO ---
+if st.sidebar.button('Gerar Relatório com Stop'):
+    with st.spinner(f'Calculando estatísticas e riscos para {ativo}...'):
         df = yf.download(ativo, start=data_inicio, progress=False)
         
         if not df.empty:
             df = df[['Open', 'High', 'Low', 'Close']].copy()
             df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
+            
+            # Cálculo de GAP, Subida e a Queda Contra (Drawdown)
             df['Gap_Real'] = ((df['Abertura'] / df['Fechamento'].shift(1)) - 1) * 100
             df['Subida_Max'] = ((df['Maxima'] / df['Abertura']) - 1) * 100
+            df['Queda_Max'] = ((df['Minima'] / df['Abertura']) - 1) * 100 # Valor negativo (Stop)
             
+            # Análise do GAP digitado
             eventos_fixos = df[(df['Gap_Real'] <= gap_digitado + 0.05) & (df['Gap_Real'] >= gap_digitado - 0.05)].copy()
             
             if len(eventos_fixos) >= 3:
+                # Busca automática do melhor alvo (Y)
                 melhor_y, melhor_x = 0, 0
                 for alvo_teste in [x * 0.1 for x in range(1, 41)]:
                     taxa = (len(eventos_fixos[eventos_fixos['Subida_Max'] >= alvo_teste]) / len(eventos_fixos)) * 100
                     if taxa >= 70: 
                         melhor_y, melhor_x = round(alvo_teste, 2), round(taxa, 1)
                 
-                if melhor_y == 0: 
-                    melhor_y = 0.5
-                    melhor_x = round((len(eventos_fixos[eventos_fixos['Subida_Max'] >= 0.5]) / len(eventos_fixos)) * 100, 1)
+                if melhor_y == 0: melhor_y, melhor_x = 0.5, round((len(eventos_fixos[eventos_fixos['Subida_Max'] >= 0.5]) / len(eventos_fixos)) * 100, 1)
 
-                st.success(f"### ✨ Resultado da Pesquisa para {ativo}")
+                # Cálculo do Stop Médio para esse GAP
+                stop_medio = eventos_fixos['Queda_Max'].mean()
+
+                st.success(f"### ✨ Relatório de Performance e Risco: {ativo}")
+                
+                # SUA FRASE ATUALIZADA COM O STOP:
                 st.subheader(f"Neste período, sempre que o ativo abriu com o GAP de {gap_digitado}%, ele acertou {melhor_x}% das vezes a porcentagem de {melhor_y}%, que foi a melhor performance dele.")
+                st.info(f"⚠️ **Atenção ao Stop:** Para atingir esta estatística, o ativo teve uma oscilação contra (queda) média de **{stop_medio:.2f}%** após a abertura.")
                 
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Ocorrências deste GAP", f"{len(eventos_fixos)} dias")
-                c2.metric("Subida Média Real", f"{eventos_fixos['Subida_Max'].mean():.2f}%")
-                c3.metric("GAP de Hoje", f"{gap_atual}%" if status_mercado == "Aberto" else "---")
+                c1.metric("Ocorrências", f"{len(eventos_fixos)} dias")
+                c2.metric("Subida Média", f"{eventos_fixos['Subida_Max'].mean():.2f}%")
+                c3.metric("Stop Sugerido (Média)", f"{stop_medio:.2f}%")
             else:
-                st.warning("Poucas ocorrências para este GAP específico.")
+                st.warning("Poucas ocorrências para este GAP.")
 
             st.markdown("---")
-            st.subheader("📋 Sugestões Adicionais")
+            st.subheader("📋 Sugestões Adicionais com Perfil de Risco")
+            
             ranking = []
             for i in range(1, 16):
                 teste_gap = round(i * -0.3, 2)
@@ -111,16 +105,20 @@ if st.sidebar.button('Gerar Relatório Completo'):
                 if len(eventos_rank) >= 5:
                     taxa_padrao = (len(eventos_rank[eventos_rank['Subida_Max'] >= 1.0]) / len(eventos_rank)) * 100
                     ranking.append({
-                        "Sugestão": f"GAP abaixo de {teste_gap}%",
+                        "Sugestão": f"GAP < {teste_gap}%",
                         "Dias": len(eventos_rank),
                         "Acerto (Alvo 1%)": f"{round(taxa_padrao, 1)}%",
-                        "Subida Média Real": f"{round(eventos_rank['Subida_Max'].mean(), 2)}%"
+                        "Subida Média": f"{round(eventos_rank['Subida_Max'].mean(), 2)}%",
+                        "Queda Média (Risco)": f"{round(eventos_rank['Queda_Max'].mean(), 2)}%"
                     })
             
             if ranking:
                 st.table(pd.DataFrame(ranking).sort_values(by="Acerto (Alvo 1%)", ascending=False))
             
-            fig = px.histogram(df[df['Gap_Real'] < 0], x="Subida_Max", title="Frequência de Altas (GAPs de Baixa)")
+            st.write("### 📉 Relação: Subida Máxima vs Queda Máxima")
+            fig = px.scatter(df[df['Gap_Real'] < 0], x="Subida_Max", y="Queda_Max", 
+                             title="Onde o preço foi após o GAP (Cada ponto é um dia)",
+                             labels={'Subida_Max': 'Subida (%)', 'Queda_Max': 'Queda/Risco (%)'})
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.error("Erro ao carregar dados.")
