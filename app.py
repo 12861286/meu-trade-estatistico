@@ -9,15 +9,24 @@ st.set_page_config(page_title="Scanner Quant B3", layout="wide")
 
 st.title("🔍 Scanner de Estatística de Abertura")
 
-# --- LISTA AMPLIADA (IBOV + FUTUROS) ---
+# --- LISTA EXTENSA DE AÇÕES B3 ---
 @st.cache_data
 def carregar_lista_ativos():
-    ativos = [
-        "PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "BBAS3.SA", "ABEV3.SA", 
-        "MGLU3.SA", "PRIO3.SA", "WEGE3.SA", "RENT3.SA", "GGBR4.SA", "CSNA3.SA",
-        "WIN=F", "DOL=F", "^BVSP"
+    # Lista com as ações mais líquidas da B3
+    acoes = [
+        "RRRP3.SA", "ALOS3.SA", "ALPA4.SA", "ABEV3.SA", "ARZZ3.SA", "ASAI3.SA", "AZUL4.SA", "B3SA3.SA", 
+        "BBAS3.SA", "BBDC3.SA", "BBDC4.SA", "BBSE3.SA", "BEEF3.SA", "BPAC11.SA", "BRAP4.SA", "BRFS3.SA", 
+        "BRKM5.SA", "BRML3.SA", "CCRO3.SA", "CIEL3.SA", "CMIG4.SA", "CMIN3.SA", "COGN3.SA", "CPFE3.SA", 
+        "CPLE6.SA", "CRFB3.SA", "CSAN3.SA", "CSNA3.SA", "CVCB3.SA", "CYRE3.SA", "DXCO3.SA", "ECOR3.SA", 
+        "EGIE3.SA", "ELET3.SA", "ELET6.SA", "EMBR3.SA", "ENEV3.SA", "ENGI11.SA", "EQTL3.SA", "EZTC3.SA", 
+        "FLRY3.SA", "GGBR4.SA", "GOAU4.SA", "GOLL4.SA", "HAPV3.SA", "HYPE3.SA", "IGTI11.SA", "IRBR3.SA", 
+        "ITSA4.SA", "ITUB4.SA", "JBSS3.SA", "KLBN11.SA", "LREN3.SA", "LWSA3.SA", "MGLU3.SA", "MRFG3.SA", 
+        "MRVE3.SA", "MULT3.SA", "NTCO3.SA", "PCAR3.SA", "PETR3.SA", "PETR4.SA", "PRIO3.SA", "PSSA3.SA", 
+        "RADL3.SA", "RAIL3.SA", "RAIZ4.SA", "RENT3.SA", "SANB11.SA", "SBSP3.SA", "SLCE3.SA", "SMTO3.SA", 
+        "SOMA3.SA", "SUZB3.SA", "TAEE11.SA", "TIMS3.SA", "TOTS3.SA", "TRPL4.SA", "UGPA3.SA", "USIM5.SA", 
+        "VALE3.SA", "VAMO3.SA", "VBBR3.SA", "VIVA3.SA", "VIVT3.SA", "WEGE3.SA", "YDUQ3.SA"
     ]
-    return sorted(ativos)
+    return sorted(list(set(acoes)))
 
 # --- FUNÇÃO DO GAP DE HOJE ---
 def obter_gap_hoje(ticker):
@@ -45,7 +54,7 @@ def calcular_melhor_performance(df_eventos):
 # --- BARRA LATERAL ---
 st.sidebar.header("Configurações do Backtest")
 lista_sugerida = carregar_lista_ativos()
-ativo = st.sidebar.selectbox("Selecione ou DIGITE o código do Ativo:", lista_sugerida)
+ativo = st.sidebar.selectbox("Selecione ou DIGITE a ação (Ex: PETR4.SA):", lista_sugerida)
 data_inicio = st.sidebar.date_input("Data de Início da Pesquisa:", datetime(2020, 1, 1))
 gap_digitado = st.sidebar.number_input("Porcentagem do GAP desejada:", value=-1.0, step=0.1)
 filtro_radar = st.sidebar.number_input("Mínimo de Acerto para o Radar (%):", value=80, step=5)
@@ -59,7 +68,7 @@ texto_cor = "#155724" if gap_atual >= 0 else "#721c24"
 
 st.sidebar.markdown(f"""
     <div style="background-color:{cor_caixa}; padding:5px 10px; border-radius:8px; border:1px solid {texto_cor}; text-align:center; margin-top:10px;">
-        <span style="color:{texto_cor}; font-weight:bold; font-size:12px;">GAP REAL HOJE ({ativo}): {gap_atual}%</span>
+        <span style="color:{texto_cor}; font-weight:bold; font-size:12px;">GAP HOJE {ativo}: {gap_atual}%</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -68,7 +77,7 @@ if rodar:
     with st.spinner(f'Analisando {ativo}...'):
         df = yf.download(ativo, start=data_inicio, progress=False)
         
-        if not df.empty:
+        if not df.empty and len(df) > 10:
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             df = df[['Open', 'High', 'Low', 'Close']].copy()
             df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
@@ -87,7 +96,6 @@ if rodar:
                 st.subheader(f"Neste período, sempre que o ativo abriu com o GAP de {gap_digitado}%, ele acertou {x_dig}% das vezes a porcentagem de {y_dig}%, que foi a melhor performance dele.")
                 st.warning(f"💡 **Ponto de Stop:** Queda média de **{eventos_digitados['Queda_Apos_Abertura'].mean():.2f}%**.")
 
-                # RECOLOCANDO A MÁXIMA E MÍNIMA AQUI:
                 st.markdown("#### 🏁 Comportamento até o Fechamento")
                 fech_pos = len(eventos_digitados[eventos_digitados['Resultado_Fechamento'] > 0])
                 taxa_fech_pos = round((fech_pos / len(eventos_digitados)) * 100, 1)
@@ -131,12 +139,17 @@ if rodar:
             radar_oportunidades = []
             for ticker in lista_sugerida:
                 try:
-                    d_radar = yf.download(ticker, period="max", progress=False)
+                    d_radar = yf.download(ticker, period="3mo", progress=False) # Periodo menor para ser mais rapido
                     d_radar.columns = [c[0] if isinstance(c, tuple) else c for c in d_radar.columns]
                     g_h = round(((float(d_radar['Open'].iloc[-1]) / float(d_radar['Close'].iloc[-2])) - 1) * 100, 2)
-                    d_radar['Gap_Hist'] = ((d_radar['Open'] / d_radar['Close'].shift(1)) - 1) * 100
-                    d_radar['Max_Apos_Abertura'] = ((d_radar['High'] / d_radar['Open']) - 1) * 100
-                    f_radar = d_radar[(d_radar['Gap_Hist'] <= g_h + 0.1) & (d_radar['Gap_Hist'] >= g_h - 0.1)]
+                    
+                    # Para o radar, usamos o historico completo
+                    d_full = yf.download(ticker, period="max", progress=False)
+                    d_full.columns = [c[0] if isinstance(c, tuple) else c for c in d_full.columns]
+                    d_full['Gap_Hist'] = ((d_full['Open'] / d_full['Close'].shift(1)) - 1) * 100
+                    d_full['Max_Apos_Abertura'] = ((d_full['High'] / d_full['Open']) - 1) * 100
+                    
+                    f_radar = d_full[(d_full['Gap_Hist'] <= g_h + 0.15) & (d_full['Gap_Hist'] >= g_h - 0.15)]
                     if len(f_radar) >= 5:
                         yr, xr = calcular_melhor_performance(f_radar)
                         if xr >= filtro_radar:
@@ -145,20 +158,13 @@ if rodar:
             if radar_oportunidades: st.table(pd.DataFrame(radar_oportunidades))
             else: st.write("Nenhum ativo de elite no radar agora.")
 
-            # --- GRÁFICO FINAL (MANTIDO EM COLUNAS) ---
+            # --- GRÁFICO FINAL ---
             st.markdown("---")
             st.subheader(f"📊 Histórico de Performance em Colunas (GAP {gap_digitado}%)")
-            fig = px.bar(eventos_digitados.sort_index(), 
-                         y="Max_Apos_Abertura", 
-                         title="Máxima atingida após a abertura em cada evento histórico",
-                         labels={'Max_Apos_Abertura': 'Subida Máxima (%)', 'Date': 'Data'},
-                         color_discrete_sequence=['#3366CC'])
-            
+            fig = px.bar(eventos_digitados.sort_index(), y="Max_Apos_Abertura", color_discrete_sequence=['#3366CC'])
             if 'y_dig' in locals():
-                fig.add_hline(y=y_dig, line_dash="dash", line_color="red", 
-                             annotation_text=f"Alvo Sugerido: {y_dig}%")
-            
+                fig.add_hline(y=y_dig, line_dash="dash", line_color="red", annotation_text=f"Alvo: {y_dig}%")
             st.plotly_chart(fig, use_container_width=True)
             
         else:
-            st.error("Ativo não encontrado ou sem dados.")
+            st.error("Ativo não encontrado ou dados insuficientes.")
