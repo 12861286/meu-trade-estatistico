@@ -87,10 +87,16 @@ if rodar:
                 st.subheader(f"Neste período, sempre que o ativo abriu com o GAP de {gap_digitado}%, ele acertou {x_dig}% das vezes a porcentagem de {y_dig}%, que foi a melhor performance dele.")
                 st.warning(f"💡 **Ponto de Stop:** Queda média de **{eventos_digitados['Queda_Apos_Abertura'].mean():.2f}%**.")
 
+                # RECOLOCANDO A MÁXIMA E MÍNIMA AQUI:
                 st.markdown("#### 🏁 Comportamento até o Fechamento")
                 fech_pos = len(eventos_digitados[eventos_digitados['Resultado_Fechamento'] > 0])
                 taxa_fech_pos = round((fech_pos / len(eventos_digitados)) * 100, 1)
+                res_medio = eventos_digitados['Resultado_Fechamento'].mean()
+                max_media = eventos_digitados['Max_Apos_Abertura'].mean()
+                min_media = eventos_digitados['Queda_Apos_Abertura'].mean()
+                
                 st.write(f"O ativo fechou o dia positivo (em relação à abertura) em **{taxa_fech_pos}%** das vezes.")
+                st.write(f"O resultado médio no fechamento foi de **{res_medio:.2f}%**, com uma **máxima média de {max_media:.2f}%** e **mínima média de {min_media:.2f}%**.")
             
             # --- ANÁLISE 2: GAP DE HOJE ---
             st.markdown("---")
@@ -139,17 +145,15 @@ if rodar:
             if radar_oportunidades: st.table(pd.DataFrame(radar_oportunidades))
             else: st.write("Nenhum ativo de elite no radar agora.")
 
-            # --- GRÁFICO FINAL (MUDADO PARA COLUNAS/BAR) ---
+            # --- GRÁFICO FINAL (MANTIDO EM COLUNAS) ---
             st.markdown("---")
             st.subheader(f"📊 Histórico de Performance em Colunas (GAP {gap_digitado}%)")
-            # Criando gráfico de barras
             fig = px.bar(eventos_digitados.sort_index(), 
                          y="Max_Apos_Abertura", 
                          title="Máxima atingida após a abertura em cada evento histórico",
                          labels={'Max_Apos_Abertura': 'Subida Máxima (%)', 'Date': 'Data'},
                          color_discrete_sequence=['#3366CC'])
             
-            # Adicionando uma linha de referência para o alvo sugerido
             if 'y_dig' in locals():
                 fig.add_hline(y=y_dig, line_dash="dash", line_color="red", 
                              annotation_text=f"Alvo Sugerido: {y_dig}%")
