@@ -68,18 +68,33 @@ if rodar:
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             df = df[['Open', 'High', 'Low', 'Close']].copy()
             df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
+            
+            # Cálculos base
             df['Gap'] = ((df['Abertura'] / df['Fechamento'].shift(1)) - 1) * 100
             df['Max_Apos_Abertura'] = ((df['Maxima'] / df['Abertura']) - 1) * 100
             df['Queda_Apos_Abertura'] = ((df['Minima'] / df['Abertura']) - 1) * 100
             
+            # Novos cálculos de fechamento (Abertura vs Fechamento do próprio dia)
+            df['Resultado_Fechamento'] = ((df['Fechamento'] / df['Abertura']) - 1) * 100
+
             # --- ANÁLISE 1: GAP DIGITADO ---
             eventos_digitados = df[(df['Gap'] <= gap_digitado + 0.1) & (df['Gap'] >= gap_digitado - 0.1)].copy()
+            
             st.success(f"### 🎯 Resultado para o GAP Digitado ({gap_digitado}%)")
             if len(eventos_digitados) >= 3:
                 y_dig, x_dig = calcular_melhor_performance(eventos_digitados)
                 st.subheader(f"Neste período, sempre que o ativo abriu com o GAP de {gap_digitado}%, ele acertou {x_dig}% das vezes a porcentagem de {y_dig}%, que foi a melhor performance dele.")
                 st.warning(f"💡 **Ponto de Stop:** Queda média de **{eventos_digitados['Queda_Apos_Abertura'].mean():.2f}%**.")
 
+                # --- NOVA PARTE: COMPORTAMENTO DO FECHAMENTO ---
+                st.markdown("#### 🏁 Comportamento até o Fechamento")
+                fech_pos = len(eventos_digitados[eventos_digitados['Resultado_Fechamento'] > 0])
+                taxa_fech_pos = round((fech_pos / len(eventos_digitados)) * 100, 1)
+                res_medio = eventos_digitados['Resultado_Fechamento'].mean()
+                
+                st.write(f"Toda vez que aconteceu o GAP de {gap_digitado}%, o ativo fechou o dia positivo em **{taxa_fech_pos}%** das vezes.")
+                st.write(f"O resultado médio no fechamento foi de **{res_medio:.2f}%** de alteração, com uma máxima média de **{eventos_digitados['Max_Apos_Abertura'].mean():.2f}%** e mínima média de **{eventos_digitados['Queda_Apos_Abertura'].mean():.2f}%**.")
+            
             # --- ANÁLISE 2: GAP DE HOJE ---
             st.markdown("---")
             st.info(f"### 🕒 Análise Baseada na Abertura de HOJE ({gap_atual}%)")
@@ -88,7 +103,7 @@ if rodar:
                 y_hoje, x_hoje = calcular_melhor_performance(eventos_hoje)
                 st.subheader(f"Com este gap da abertura de hoje ({gap_atual}%), o ativo teve sua melhor performance de acerto a {y_hoje}% em {x_hoje}% das vezes.")
 
-            # --- SUGESTÕES ADICIONAIS (COLUNAS NOVAS) ---
+            # --- SUGESTÕES ADICIONAIS ---
             st.markdown("---")
             st.subheader("📋 Sugestões Adicionais (Range: +5% a -5%)")
             ranking = []
@@ -100,14 +115,14 @@ if rodar:
                     ranking.append({
                         "Faixa de GAP": f"Próximo a {t_gap}%",
                         "Dias": len(ev_r),
-                        "Melhor Porcentagem (Alvo)": f"{y_r}%",
-                        "Acerto Histórico": f"{x_r}%",
+                        "Melhor Alvo": f"{y_r}%",
+                        "Acerto": f"{x_r}%",
                         "Stop Médio": f"{round(ev_r['Queda_Apos_Abertura'].mean(), 2)}%"
                     })
             if ranking:
                 st.table(pd.DataFrame(ranking).sort_values(by="Faixa de GAP", ascending=False))
 
-            # --- RADAR DE OPORTUNIDADES (MOVIDO PARA O FINAL) ---
+            # --- RADAR DE OPORTUNIDADES ---
             st.markdown("---")
             st.subheader(f"🚀 Radar de Oportunidades (Acerto > {filtro_radar}%)")
             radar_oportunidades = []
@@ -118,12 +133,11 @@ if rodar:
                     g_h = round(((float(d_radar['Open'].iloc[-1]) / float(d_radar['Close'].iloc[-2])) - 1) * 100, 2)
                     d_radar['Gap_Hist'] = ((d_radar['Open'] / d_radar['Close'].shift(1)) - 1) * 100
                     d_radar['Max_Apos_Abertura'] = ((d_radar['High'] / d_radar['Open']) - 1) * 100
-                    d_radar['Queda_Apos_Abertura'] = ((d_radar['Low'] / d_radar['Open']) - 1) * 100
                     f_radar = d_radar[(d_radar['Gap_Hist'] <= g_h + 0.1) & (d_radar['Gap_Hist'] >= g_h - 0.1)]
                     if len(f_radar) >= 5:
                         yr, xr = calcular_melhor_performance(f_radar)
                         if xr >= filtro_radar:
-                            radar_oportunidades.append({"Ativo": ticker, "GAP Hoje": f"{g_h}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%", "Stop": f"{round(f_radar['Queda_Apos_Abertura'].mean(), 2)}%"})
+                            radar_oportunidades.append({"Ativo": ticker, "GAP Hoje": f"{g_h}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%", "Stop": f"{round(f_radar['Low'].mean(), 2)}%"})
                 except: continue
             if radar_oportunidades: st.table(pd.DataFrame(radar_oportunidades))
             else: st.write("Sem ativos de elite hoje.")
