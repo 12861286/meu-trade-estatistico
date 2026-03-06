@@ -12,13 +12,11 @@ st.title("🔍 Scanner de Estatística de Abertura")
 # --- LISTA AMPLIADA (IBOV + FUTUROS) ---
 @st.cache_data
 def carregar_lista_ativos():
-    # Principais ações do IBOV + Futuros (Códigos sugeridos para busca)
     ativos = [
         "PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "BBAS3.SA", "ABEV3.SA", 
         "MGLU3.SA", "PRIO3.SA", "WEGE3.SA", "RENT3.SA", "GGBR4.SA", "CSNA3.SA",
-        "WIN=F", "DOL=F", "^BVSP", "WDON24.SA", "WINN24.SA" 
+        "WIN=F", "DOL=F", "^BVSP"
     ]
-    # Aqui adicionei os principais, mas o usuário pode digitar qualquer um.
     return sorted(ativos)
 
 # --- FUNÇÃO DO GAP DE HOJE ---
@@ -47,10 +45,7 @@ def calcular_melhor_performance(df_eventos):
 # --- BARRA LATERAL ---
 st.sidebar.header("Configurações do Backtest")
 lista_sugerida = carregar_lista_ativos()
-
-# MUDANÇA: Agora você pode selecionar ou digitar o código que quiser
 ativo = st.sidebar.selectbox("Selecione ou DIGITE o código do Ativo:", lista_sugerida)
-
 data_inicio = st.sidebar.date_input("Data de Início da Pesquisa:", datetime(2020, 1, 1))
 gap_digitado = st.sidebar.number_input("Porcentagem do GAP desejada:", value=-1.0, step=0.1)
 filtro_radar = st.sidebar.number_input("Mínimo de Acerto para o Radar (%):", value=80, step=5)
@@ -70,7 +65,7 @@ st.sidebar.markdown(f"""
 
 # --- PROCESSAMENTO ---
 if rodar:
-    with st.spinner(f'Analizando {ativo}...'):
+    with st.spinner(f'Analisando {ativo}...'):
         df = yf.download(ativo, start=data_inicio, progress=False)
         
         if not df.empty:
@@ -144,10 +139,22 @@ if rodar:
             if radar_oportunidades: st.table(pd.DataFrame(radar_oportunidades))
             else: st.write("Nenhum ativo de elite no radar agora.")
 
-            # --- GRÁFICO FINAL ---
+            # --- GRÁFICO FINAL (MUDADO PARA COLUNAS/BAR) ---
             st.markdown("---")
-            st.subheader("📈 Histórico de Performance")
-            fig = px.line(eventos_digitados.sort_index(), y="Max_Apos_Abertura", markers=True)
+            st.subheader(f"📊 Histórico de Performance em Colunas (GAP {gap_digitado}%)")
+            # Criando gráfico de barras
+            fig = px.bar(eventos_digitados.sort_index(), 
+                         y="Max_Apos_Abertura", 
+                         title="Máxima atingida após a abertura em cada evento histórico",
+                         labels={'Max_Apos_Abertura': 'Subida Máxima (%)', 'Date': 'Data'},
+                         color_discrete_sequence=['#3366CC'])
+            
+            # Adicionando uma linha de referência para o alvo sugerido
+            if 'y_dig' in locals():
+                fig.add_hline(y=y_dig, line_dash="dash", line_color="red", 
+                             annotation_text=f"Alvo Sugerido: {y_dig}%")
+            
             st.plotly_chart(fig, use_container_width=True)
+            
         else:
-            st.error("Ativo não encontrado ou sem dados. Verifique o código (Ex: PETR4.SA ou WIN=F).")
+            st.error("Ativo não encontrado ou sem dados.")
