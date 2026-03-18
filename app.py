@@ -118,12 +118,13 @@ if rodar:
             if ranking:
                 st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
 
-            # --- RADAR DE OPORTUNIDADES ---
+            # --- RADAR DE OPORTUNIDADES (HOJE) ---
             st.markdown("---")
             st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
             
             dados_radar = yf.download(lista_sugerida, period="60d", progress=False)
             radar_oportunidades = []
+            radar_ontem = []
             
             for ticker in lista_sugerida:
                 try:
@@ -133,23 +134,46 @@ if rodar:
                         'Low': dados_radar['Low'][ticker],
                         'Close': dados_radar['Close'][ticker]
                     }).dropna()
+
+                    if len(df_tic) < 5: continue
                     
+                    # --- Lógica Hoje ---
                     g_hoje = round(((float(df_tic['Open'].iloc[-1]) / float(df_tic['Close'].iloc[-2])) - 1) * 100, 2)
                     
+                    # --- Lógica Ontem (Último dia fechado antes de hoje) ---
+                    g_ontem = round(((float(df_tic['Open'].iloc[-2]) / float(df_tic['Close'].iloc[-3])) - 1) * 100, 2)
+                    data_ontem = df_tic.index[-2].strftime('%d/%m/%Y')
+
+                    # Backtest Histórico
                     df_r = yf.download(ticker, start=data_inicio, progress=False)
                     df_r.columns = [c[0] if isinstance(c, tuple) else c for c in df_r.columns]
                     df_r['Gap_H'] = ((df_r['Open'] / df_r['Close'].shift(1)) - 1) * 100
                     df_r['Max_A'] = ((df_r['High'] / df_r['Open']) - 1) * 100
                     
-                    f_r = df_r[(df_r['Gap_H'] <= g_hoje + 0.15) & (df_r['Gap_H'] >= g_hoje - 0.15)]
-                    if len(f_r) >= 5:
-                        yr, xr = calcular_melhor_performance(f_r.rename(columns={'Max_A':'Max_Apos_Abertura'}))
+                    # Filtro Hoje
+                    f_hoje = df_r[(df_r['Gap_H'] <= g_hoje + 0.15) & (df_r['Gap_H'] >= g_hoje - 0.15)]
+                    if len(f_hoje) >= 5:
+                        yr, xr = calcular_melhor_performance(f_hoje.rename(columns={'Max_A':'Max_Apos_Abertura'}))
                         if xr >= filtro_radar:
                             radar_oportunidades.append({"Ativo": ticker, "GAP": f"{g_hoje}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
+                    
+                    # Filtro Ontem
+                    f_ontem = df_r[(df_r['Gap_H'] <= g_ontem + 0.15) & (df_r['Gap_H'] >= g_ontem - 0.15)]
+                    if len(f_ontem) >= 5:
+                        yr_o, xr_o = calcular_melhor_performance(f_ontem.rename(columns={'Max_A':'Max_Apos_Abertura'}))
+                        if xr_o >= filtro_radar:
+                            radar_ontem.append({"Data": data_ontem, "Ativo": ticker, "GAP": f"{g_ontem}%", "Acerto": f"{xr_o}%", "Alvo": f"{yr_o}%"})
+
                 except: continue
                 
             if radar_oportunidades: st.table(pd.DataFrame(radar_oportunidades))
             else: st.write("Nenhuma oportunidade clara agora.")
+
+            # --- RADAR DE ONTEM ---
+            st.markdown("---")
+            st.subheader(f"⏪ Radar de Elite - Dia Anterior (> {filtro_radar}% Acerto)")
+            if radar_ontem: st.table(pd.DataFrame(radar_ontem))
+            else: st.write("Nenhuma oportunidade detectada no dia anterior.")
 
             # --- GRÁFICO ---
             st.markdown("---")
