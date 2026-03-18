@@ -61,7 +61,11 @@ filtro_radar = st.sidebar.number_input("Mínimo de Acerto Radar (%):", value=80,
 
 # --- BOTÕES ---
 rodar = st.sidebar.button('🚀 Rodar Estatística e Radar')
-conferir_ontem = st.sidebar.button('⏪ Conferir Resultado de Ontem')
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Verificar Data Específica")
+data_alvo = st.sidebar.date_input("Escolha a data:", datetime.now())
+conferir_data = st.sidebar.button('📅 Conferir Resultado da Data')
 
 # --- CAIXA DE GAP REAL ---
 gap_atual = obter_gap_hoje(ativo)
@@ -69,7 +73,7 @@ cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
 st.sidebar.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
 
 # --- PROCESSAMENTO ---
-if rodar or conferir_ontem:
+if rodar or conferir_data:
     with st.spinner(f'Processando {ativo}...'):
         df = yf.download(ativo, start=data_inicio, progress=False)
         
@@ -84,31 +88,41 @@ if rodar or conferir_ontem:
             df['Resultado_Fechamento'] = ((df['Fechamento'] / df['Abertura']) - 1) * 100
             df = df.dropna()
 
-            # --- BLOCO EXCLUSIVO PARA CONFERIR O RESULTADO DE ONTEM ---
-            if conferir_ontem:
+            # --- BLOCO PARA CONFERIR DATA ESPECÍFICA ---
+            if conferir_data:
                 st.markdown("---")
-                ultimo_gap = round(df['Gap'].iloc[-1], 2)
-                ultima_max = round(df['Max_Apos_Abertura'].iloc[-1], 2)
-                data_ontem = df.index[-1].strftime('%d/%m/%Y')
+                data_busca = data_alvo.strftime('%Y-%m-%d')
                 
-                historico = df.iloc[:-1]
-                eventos_ontem = historico[(historico['Gap'] <= ultimo_gap + 0.15) & (historico['Gap'] >= ultimo_gap - 0.15)].copy()
-                
-                st.info(f"### 📊 Resultado do Ativo no Último Pregão ({data_ontem})")
-                col1, col2 = st.columns(2)
-                col1.metric("GAP de Abertura", f"{ultimo_gap}%")
-                col2.metric("Máxima Atingida", f"{ultima_max}%")
-                
-                if len(eventos_ontem) >= 3:
-                    y_o, x_o = calcular_melhor_performance(eventos_ontem)
-                    st.write(f"**Estatística Esperada:** {x_o}% de chance para buscar {y_o}% de alvo.")
+                if data_busca in df.index.strftime('%Y-%m-%d'):
+                    dia_selecionado = df.loc[df.index.strftime('%Y-%m-%d') == data_busca].iloc[0]
+                    gap_dia = round(dia_selecionado['Gap'], 2)
+                    max_dia = round(dia_selecionado['Max_Apos_Abertura'], 2)
+                    min_dia = round(dia_selecionado['Queda_Apos_Abertura'], 2)
                     
-                    if ultima_max >= y_o:
-                        st.success(f"✅ **BATEU O ALVO!** O ativo superou a estatística de {y_o}%.")
+                    # Backtest histórico para esse GAP (excluindo a própria data consultada)
+                    historico = df[df.index.strftime('%Y-%m-%d') != data_busca]
+                    eventos_data = historico[(historico['Gap'] <= gap_dia + 0.15) & (historico['Gap'] >= gap_dia - 0.15)].copy()
+                    
+                    st.info(f"### 📊 Resultado do Ativo em {data_alvo.strftime('%d/%m/%Y')}")
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("GAP de Abertura", f"{gap_dia}%")
+                    col2.metric("Máxima do Dia", f"{max_dia}%")
+                    col3.metric("Mínima do Dia", f"{min_dia}%")
+                    
+                    if len(eventos_data) >= 3:
+                        y_o, x_o = calcular_melhor_performance(eventos_data)
+                        st.write(f"**Estatística Esperada:** {x_o}% de chance para buscar {y_o}% de alvo.")
+                        
+                        if max_dia >= y_o:
+                            st.success(f"✅ **BATEU O ALVO!** O ativo atingiu {max_dia}% (Alvo era {y_o}%).")
+                        else:
+                            st.error(f"❌ **NÃO BATEU.** A máxima foi de {max_dia}% (Alvo era {y_o}%).")
+                        
+                        st.warning(f"ℹ️ **Resumo da Oscilação:** Nesse dia, o preço variou entre a mínima de **{min_dia}%** e a máxima de **{max_dia}%** em relação à abertura.")
                     else:
-                        st.error(f"❌ **NÃO BATEU.** O ativo ficou abaixo do esperado de {y_o}%.")
+                        st.warning("Histórico insuficiente para calcular estatística deste GAP na data selecionada.")
                 else:
-                    st.warning("Histórico insuficiente para calcular estatística deste GAP específico.")
+                    st.error("Data não encontrada no histórico de pregões deste ativo.")
 
             # --- BLOCO ORIGINAL DO BOTÃO RODAR ---
             if rodar:
@@ -119,13 +133,11 @@ if rodar or conferir_ontem:
                     y_dig, x_dig = calcular_melhor_performance(eventos_digitados)
                     st.subheader(f"Probabilidade de {x_dig}% para atingir {y_dig}% de alvo.")
                     
-                    # Correção: Fechamento Positivo e Negativo
                     qtd_pos = len(eventos_digitados[eventos_digitados['Resultado_Fechamento'] > 0])
                     perc_pos = round((qtd_pos / len(eventos_digitados)) * 100, 1)
                     perc_neg = round(100 - perc_pos, 1)
                     st.write(f"**Fechamento:** Positivo {perc_pos}% | Negativo {perc_neg}%")
                     
-                    # Correção: Médias do dia Máxima e Mínima
                     media_max = eventos_digitados['Max_Apos_Abertura'].mean()
                     media_min = eventos_digitados['Queda_Apos_Abertura'].mean()
                     st.write(f"**Médias do dia:** Máxima {media_max:.2f}% | Mínima {media_min:.2f}%")
@@ -139,7 +151,6 @@ if rodar or conferir_ontem:
                     ev_r = df[(df['Gap'] <= t_gap + 0.2) & (df['Gap'] >= t_gap - 0.2)]
                     if len(ev_r) >= 4:
                         y_r, x_r = calcular_melhor_performance(ev_r)
-                        # Inclusão da coluna Mínima Média
                         ranking.append({
                             "GAP": f"{t_gap}%", 
                             "Dias": len(ev_r), 
@@ -170,7 +181,7 @@ if rodar or conferir_ontem:
                     except: continue
                 if radar_hoje: st.table(pd.DataFrame(radar_hoje))
 
-            # --- GRÁFICO (SEMPRE APARECE) ---
+            # --- GRÁFICO ---
             st.markdown("---")
             st.subheader(f"📊 Histórico Visual de Máximas - {ativo}")
             fig = px.bar(df.sort_index(), y="Max_Apos_Abertura", color_discrete_sequence=['#3366CC'])
