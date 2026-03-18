@@ -55,6 +55,12 @@ def calcular_melhor_performance(df_eventos):
 st.sidebar.header("Configurações do Backtest")
 lista_sugerida = carregar_lista_ativos()
 ativo = st.sidebar.selectbox("Selecione ou DIGITE a ação:", lista_sugerida)
+
+# --- CAIXA DE GAP REAL (MOVIDA PARA CÁ) ---
+gap_atual = obter_gap_hoje(ativo)
+cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
+st.sidebar.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black; margin-bottom: 15px;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
+
 data_inicio = st.sidebar.date_input("Data de Início:", datetime(2020, 1, 1))
 gap_digitado = st.sidebar.number_input("GAP desejado (%):", value=-1.0, step=0.1)
 filtro_radar = st.sidebar.number_input("Mínimo de Acerto Radar (%):", value=80, step=5)
@@ -67,10 +73,6 @@ st.sidebar.subheader("Verificar Data Específica")
 data_alvo = st.sidebar.date_input("Escolha a data:", datetime.now())
 conferir_data = st.sidebar.button('📅 Conferir Resultado da Data')
 
-# --- CAIXA DE GAP REAL ---
-gap_atual = obter_gap_hoje(ativo)
-cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
-st.sidebar.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
 
 # --- PROCESSAMENTO ---
 if rodar or conferir_data:
@@ -186,3 +188,4 @@ if rodar or conferir_data:
             st.subheader(f"📊 Histórico Visual de Máximas - {ativo}")
             fig = px.bar(df.sort_index(), y="Max_Apos_Abertura", color_discrete_sequence=['#3366CC'])
             st.plotly_chart(fig, use_container_width=True)
+            
