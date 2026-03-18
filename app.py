@@ -32,7 +32,6 @@ def obter_gap_hoje(ticker):
     try:
         dados = yf.download(ticker, period="2d", progress=False)
         if len(dados) < 2: return 0.0
-        # Tratamento de colunas para evitar erro de tupla
         dados.columns = [c[0] if isinstance(c, tuple) else c for c in dados.columns]
         fechamento_ontem = float(dados['Close'].iloc[-2])
         abertura_hoje = float(dados['Open'].iloc[-1])
@@ -73,7 +72,6 @@ if rodar:
         df = yf.download(ativo, start=data_inicio, progress=False)
         
         if not df.empty and len(df) > 10:
-            # Tratamento de colunas vindo do yfinance
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             df = df[['Open', 'High', 'Low', 'Close']].copy()
             df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
@@ -120,17 +118,15 @@ if rodar:
             if ranking:
                 st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
 
-            # --- RADAR DE OPORTUNIDADES OTIMIZADO ---
+            # --- RADAR DE OPORTUNIDADES ---
             st.markdown("---")
             st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
             
-            # Download em lote para velocidade
             dados_radar = yf.download(lista_sugerida, period="60d", progress=False)
             radar_oportunidades = []
             
             for ticker in lista_sugerida:
                 try:
-                    # Extração rápida dos dados do lote
                     df_tic = pd.DataFrame({
                         'Open': dados_radar['Open'][ticker],
                         'High': dados_radar['High'][ticker],
@@ -140,8 +136,23 @@ if rodar:
                     
                     g_hoje = round(((float(df_tic['Open'].iloc[-1]) / float(df_tic['Close'].iloc[-2])) - 1) * 100, 2)
                     
-                    # Backtest no histórico longo (reutilizando a lógica do ativo principal para o radar)
-                    # Nota: Para o radar ser 100% preciso por ativo, ele precisaria do histórico longo de cada um.
-                    # Aqui ele usa o GAP de HOJE e valida na regra de performance.
                     df_r = yf.download(ticker, start=data_inicio, progress=False)
-                    df_r.columns = [c[0] if isinstance(c, tuple) else c for c in df_r.
+                    df_r.columns = [c[0] if isinstance(c, tuple) else c for c in df_r.columns]
+                    df_r['Gap_H'] = ((df_r['Open'] / df_r['Close'].shift(1)) - 1) * 100
+                    df_r['Max_A'] = ((df_r['High'] / df_r['Open']) - 1) * 100
+                    
+                    f_r = df_r[(df_r['Gap_H'] <= g_hoje + 0.15) & (df_r['Gap_H'] >= g_hoje - 0.15)]
+                    if len(f_r) >= 5:
+                        yr, xr = calcular_melhor_performance(f_r.rename(columns={'Max_A':'Max_Apos_Abertura'}))
+                        if xr >= filtro_radar:
+                            radar_oportunidades.append({"Ativo": ticker, "GAP": f"{g_hoje}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
+                except: continue
+                
+            if radar_oportunidades: st.table(pd.DataFrame(radar_oportunidades))
+            else: st.write("Nenhuma oportunidade clara agora.")
+
+            # --- GRÁFICO ---
+            st.markdown("---")
+            st.subheader("📊 Histórico Visual de Máximas")
+            fig = px.bar(eventos_digitados.sort_index(), y="Max_Apos_Abertura", color_discrete_sequence=['#3366CC'])
+            st.plotly_chart(fig, use_container_width=True)
