@@ -2,14 +2,15 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # 1. Configuração de layout
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
 
 st.title("🔍 Scanner de Estatística de Abertura")
 
-@st.cache_data(ttl=3600) # Cache de 1 hora
+# --- LISTA EXTENSA DE AÇÕES B3 ---
+@st.cache_data
 def carregar_lista_ativos():
     acoes = [
         "RRRP3.SA", "ALOS3.SA", "ALPA4.SA", "ABEV3.SA", "ARZZ3.SA", "ASAI3.SA", "AZUL4.SA", "B3SA3.SA", 
@@ -26,111 +27,121 @@ def carregar_lista_ativos():
     ]
     return sorted(list(set(acoes)))
 
+# --- FUNÇÃO DO GAP DE HOJE ---
+def obter_gap_hoje(ticker):
+    try:
+        dados = yf.download(ticker, period="2d", progress=False)
+        if len(dados) < 2: return 0.0
+        # Tratamento de colunas para evitar erro de tupla
+        dados.columns = [c[0] if isinstance(c, tuple) else c for c in dados.columns]
+        fechamento_ontem = float(dados['Close'].iloc[-2])
+        abertura_hoje = float(dados['Open'].iloc[-1])
+        return round(((abertura_hoje / fechamento_ontem) - 1) * 100, 2)
+    except: return 0.0
+
+# --- FUNÇÃO PARA CALCULAR MELHOR PERFORMANCE ---
 def calcular_melhor_performance(df_eventos):
-    if len(df_eventos) < 3:
-        return 0.0, 0.0
-    
     melhor_y, melhor_x = 0, 0
-    # Testa alvos de 0.1% a 4.0%
-    for alvo_t in [x * 0.1 for x in range(1, 41)]:
-        taxa = (len(df_eventos[df_eventos['Max_Apos_Abertura'] >= alvo_t]) / len(df_eventos)) * 100
-        if taxa >= 70: 
-            melhor_y, melhor_x = round(alvo_t, 2), round(taxa, 1)
-    
-    if melhor_y == 0: 
-        melhor_y = 0.5
-        melhor_x = round((len(df_eventos[df_eventos['Max_Apos_Abertura'] >= 0.5]) / len(df_eventos)) * 100, 1)
+    if len(df_eventos) >= 3:
+        for alvo_t in [x * 0.1 for x in range(1, 41)]:
+            taxa = (len(df_eventos[df_eventos['Max_Apos_Abertura'] >= alvo_t]) / len(df_eventos)) * 100
+            if taxa >= 70: 
+                melhor_y, melhor_x = round(alvo_t, 2), round(taxa, 1)
+        if melhor_y == 0: 
+            melhor_y = 0.5
+            melhor_x = round((len(df_eventos[df_eventos['Max_Apos_Abertura'] >= 0.5]) / len(df_eventos)) * 100, 1)
     return melhor_y, melhor_x
 
 # --- BARRA LATERAL ---
-st.sidebar.header("⚙️ Configurações")
+st.sidebar.header("Configurações do Backtest")
 lista_sugerida = carregar_lista_ativos()
-ativo = st.sidebar.selectbox("Selecione o ativo:", lista_sugerida)
+ativo = st.sidebar.selectbox("Selecione ou DIGITE a ação:", lista_sugerida)
 data_inicio = st.sidebar.date_input("Data de Início:", datetime(2020, 1, 1))
-gap_digitado = st.sidebar.number_input("GAP desejado para análise (%):", value=-1.0, step=0.1)
-filtro_radar = st.sidebar.slider("Mínimo de Acerto Radar (%):", 50, 95, 80)
+gap_digitado = st.sidebar.number_input("GAP desejado (%):", value=-1.0, step=0.1)
+filtro_radar = st.sidebar.number_input("Mínimo de Acerto Radar (%):", value=80, step=5)
 
-rodar = st.sidebar.button('🚀 Rodar Scanner')
+rodar = st.sidebar.button('🚀 Rodar Estatística e Radar')
 
-# --- DOWNLOAD DOS DADOS PARA O ATIVO PRINCIPAL ---
-@st.cache_data
-def get_data(ticker, start_date):
-    df = yf.download(ticker, start=start_date, progress=False)
-    if df.empty: return pd.DataFrame()
-    # Limpeza de multi-index se houver
-    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
-    df = df[['Open', 'High', 'Low', 'Close']].copy()
-    df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
-    
-    # Cálculos Quant
-    df['Gap'] = ((df['Abertura'] / df['Fechamento'].shift(1)) - 1) * 100
-    df['Max_Apos_Abertura'] = ((df['Maxima'] / df['Abertura']) - 1) * 100
-    df['Queda_Apos_Abertura'] = ((df['Minima'] / df['Abertura']) - 1) * 100
-    df['Resultado_Fechamento'] = ((df['Fechamento'] / df['Abertura']) - 1) * 100
-    return df.dropna()
+# --- CAIXA DE GAP REAL ---
+gap_atual = obter_gap_hoje(ativo)
+cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
+st.sidebar.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
 
+# --- PROCESSAMENTO ---
 if rodar:
-    df_principal = get_data(ativo, data_inicio)
-    
-    if not df_principal.empty:
-        # 1. Info do GAP de hoje
-        gap_hoje = round(df_principal['Gap'].iloc[-1], 2)
-        cor_caixa = "#d4edda" if gap_hoje >= 0 else "#f8d7da"
-        st.markdown(f'<div style="background-color:{cor_caixa}; padding:20px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px;">'
-                    f'<h3>GAP Atual de {ativo}: {gap_hoje}%</h3></div>', unsafe_allow_html=True)
-
-        # 2. Análise do GAP Específico
-        eventos = df_principal[(df_principal['Gap'] <= gap_digitado + 0.2) & (df_principal['Gap'] >= gap_digitado - 0.2)].copy()
+    with st.spinner(f'Processando {ativo}...'):
+        df = yf.download(ativo, start=data_inicio, progress=False)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"### Backtest: GAP {gap_digitado}%")
-            if len(eventos) >= 3:
-                alvo, taxa = calcular_melhor_performance(eventos)
-                st.metric("Probabilidade de Alvo", f"{taxa}%", f"Alvo: {alvo}%")
-                st.write(f"**Amostragem:** {len(eventos)} dias encontrados.")
-            else:
-                st.warning("Amostragem insuficiente para este GAP.")
-
-        with col2:
-            st.subheader("📊 Histórico de Máximas")
-            fig = px.histogram(eventos, x="Max_Apos_Abertura", nbins=10, title="Distribuição de Máximas após este GAP")
-            st.plotly_chart(fig, use_container_width=True)
-
-        # 3. Radar de Elite (Otimizado)
-        st.divider()
-        st.subheader(f"🚀 Radar de Elite (Oportunidades com >{filtro_radar}% de acerto)")
-        
-        with st.spinner("Escaneando mercado..."):
-            # Baixa os últimos 60 dias de todos para o radar (mais rápido que baixar 1 por 1)
-            dados_radar = yf.download(lista_sugerida, period="60d", progress=False)
-            oportunidades = []
+        if not df.empty and len(df) > 10:
+            # Tratamento de colunas vindo do yfinance
+            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+            df = df[['Open', 'High', 'Low', 'Close']].copy()
+            df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
             
-            for t in lista_sugerida:
+            df['Gap'] = ((df['Abertura'] / df['Fechamento'].shift(1)) - 1) * 100
+            df['Max_Apos_Abertura'] = ((df['Maxima'] / df['Abertura']) - 1) * 100
+            df['Queda_Apos_Abertura'] = ((df['Minima'] / df['Abertura']) - 1) * 100
+            df['Resultado_Fechamento'] = ((df['Fechamento'] / df['Abertura']) - 1) * 100
+            df = df.dropna()
+
+            # --- ANÁLISE DO GAP DIGITADO ---
+            eventos_digitados = df[(df['Gap'] <= gap_digitado + 0.15) & (df['Gap'] >= gap_digitado - 0.15)].copy()
+            st.success(f"### 🎯 GAP Digitado: {gap_digitado}%")
+            if len(eventos_digitados) >= 3:
+                y_dig, x_dig = calcular_melhor_performance(eventos_digitados)
+                st.subheader(f"Probabilidade de {x_dig}% para atingir {y_dig}% de alvo.")
+                
+                f_pos_d = len(eventos_digitados[eventos_digitados['Resultado_Fechamento'] > 0])
+                p_pos_d = round((f_pos_d / len(eventos_digitados)) * 100, 1)
+                st.write(f"**Fechamento:** Positivo {p_pos_d}% | Negativo {round(100-p_pos_d, 1)}%")
+                st.write(f"**Médias do dia:** Máxima {eventos_digitados['Max_Apos_Abertura'].mean():.2f}% | Mínima {eventos_digitados['Queda_Apos_Abertura'].mean():.2f}%")
+
+            # --- TABELA DE SUGESTÕES ADICIONAIS ---
+            st.markdown("---")
+            st.subheader("📋 Mapa de GAPs (+5% a -5%)")
+            ranking = []
+            for val in [x * 0.5 for x in range(-10, 11)]:
+                t_gap = round(val, 2)
+                ev_r = df[(df['Gap'] <= t_gap + 0.2) & (df['Gap'] >= t_gap - 0.2)]
+                if len(ev_r) >= 4:
+                    y_r, x_r = calcular_melhor_performance(ev_r)
+                    f_pos = len(ev_r[ev_r['Resultado_Fechamento'] > 0])
+                    p_pos = round((f_pos / len(ev_r)) * 100, 1)
+                    ranking.append({
+                        "GAP": f"{t_gap}%",
+                        "Dias": len(ev_r),
+                        "Alvo": f"{y_r}%",
+                        "Acerto": f"{x_r}%",
+                        "Máx Média": f"{round(ev_r['Max_Apos_Abertura'].mean(), 2)}%",
+                        "Mín Média": f"{round(ev_r['Queda_Apos_Abertura'].mean(), 2)}%",
+                        "% Fech Pos": f"{p_pos}%",
+                        "% Fech Neg": f"{round(100 - p_pos, 1)}%"
+                    })
+            if ranking:
+                st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
+
+            # --- RADAR DE OPORTUNIDADES OTIMIZADO ---
+            st.markdown("---")
+            st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
+            
+            # Download em lote para velocidade
+            dados_radar = yf.download(lista_sugerida, period="60d", progress=False)
+            radar_oportunidades = []
+            
+            for ticker in lista_sugerida:
                 try:
-                    # Extrai dados do ticker específico do dataframe gigante
-                    d_t = pd.DataFrame({
-                        'Open': dados_radar['Open'][t],
-                        'High': dados_radar['High'][t],
-                        'Low': dados_radar['Low'][t],
-                        'Close': dados_radar['Close'][t]
+                    # Extração rápida dos dados do lote
+                    df_tic = pd.DataFrame({
+                        'Open': dados_radar['Open'][ticker],
+                        'High': dados_radar['High'][ticker],
+                        'Low': dados_radar['Low'][ticker],
+                        'Close': dados_radar['Close'][ticker]
                     }).dropna()
                     
-                    g_hoje = ((d_t['Open'].iloc[-1] / d_t['Close'].iloc[-2]) - 1) * 100
+                    g_hoje = round(((float(df_tic['Open'].iloc[-1]) / float(df_tic['Close'].iloc[-2])) - 1) * 100, 2)
                     
-                    # Backtest rápido no histórico do ativo principal (usando df de longo prazo se for o mesmo ativo)
-                    # Para simplificar, compararemos apenas o GAP de hoje com a base histórica
-                    df_hist = get_data(t, data_inicio)
-                    f_r = df_hist[(df_hist['Gap'] <= g_hoje + 0.15) & (df_hist['Gap'] >= g_hoje - 0.15)]
-                    
-                    if len(f_r) >= 5:
-                        yr, xr = calcular_melhor_performance(f_r)
-                        if xr >= filtro_radar:
-                            oportunidades.append({"Ativo": t, "GAP Hoje": f"{g_hoje:.2f}%", "Acerto": f"{xr}%", "Alvo Sugerido": f"{yr}%", "Dias": len(f_r)})
-                except:
-                    continue
-            
-            if oportunidades:
-                st.dataframe(pd.DataFrame(oportunidades), use_container_width=True)
-            else:
-                st.write("Nenhuma oportunidade filtrada nos parâmetros atuais.")
+                    # Backtest no histórico longo (reutilizando a lógica do ativo principal para o radar)
+                    # Nota: Para o radar ser 100% preciso por ativo, ele precisaria do histórico longo de cada um.
+                    # Aqui ele usa o GAP de HOJE e valida na regra de performance.
+                    df_r = yf.download(ticker, start=data_inicio, progress=False)
+                    df_r.columns = [c[0] if isinstance(c, tuple) else c for c in df_r.
