@@ -19,7 +19,7 @@ st.markdown("""
         font-family: 'Syne', sans-serif !important;
     }
     .main .block-container {
-        background-color: #080c10;
+        background-color: #07111c;
         padding: 0.75rem 0.85rem 3rem !important;
         max-width: 480px !important;
         margin: 0 auto;
@@ -30,43 +30,82 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.6rem 0 0.9rem;
-        border-bottom: 1px solid #1e2a35;
+        padding: 0.5rem 0 1rem;
+        border-bottom: 1px solid #1a2e40;
         margin-bottom: 1.1rem;
     }
+    .qb3-logo-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    /* Bull icon SVG inline */
+    .qb3-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #0d3d2a 0%, #0a2540 100%);
+        border: 1px solid #1c6b3a44;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+        line-height: 1;
+    }
+    .qb3-title-block {}
     .qb3-logo {
         font-family: 'Syne', sans-serif;
-        font-size: 1.25rem;
+        font-size: 1.15rem;
         font-weight: 800;
-        color: #e8f4ff;
-        letter-spacing: -0.5px;
+        color: #e8f4e8;
+        letter-spacing: -0.3px;
+        line-height: 1.1;
     }
-    .qb3-logo span { color: #00d4aa; }
+    .qb3-logo span { color: #c8a93a; }
+    .qb3-sub {
+        font-size: 0.58rem;
+        color: #3a7a50;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-weight: 700;
+        margin-top: 1px;
+    }
     .qb3-badge {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.62rem;
-        background: #0d2235;
-        color: #00d4aa;
-        border: 1px solid #00d4aa44;
-        padding: 3px 8px;
+        font-size: 0.6rem;
+        background: linear-gradient(135deg, #0d3d2a, #0a2540);
+        color: #4ecb7a;
+        border: 1px solid #2a6b3a55;
+        padding: 4px 10px;
         border-radius: 20px;
         letter-spacing: 1px;
         text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .qb3-badge::before {
+        content: '';
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: #4ecb7a;
+        box-shadow: 0 0 6px #4ecb7a;
+        animation: pulse 1.6s infinite;
     }
 
     /* ── SELECTBOX ────────────────────────────────────── */
     .stSelectbox label {
         font-size: 0.7rem !important;
-        color: #5a7a8a !important;
+        color: #3a7a50 !important;
         text-transform: uppercase;
         letter-spacing: 1.5px;
         font-weight: 700;
     }
     .stSelectbox > div > div {
-        background: #0d1820 !important;
-        border: 1px solid #1e2e3e !important;
+        background: #0b1f14 !important;
+        border: 1px solid #1c4a2a !important;
         border-radius: 10px !important;
-        color: #e8f4ff !important;
+        color: #e8f4e8 !important;
         font-size: 1rem !important;
         font-weight: 700 !important;
     }
@@ -76,15 +115,15 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: #0d1820;
-        border: 1px solid #1e2e3e;
+        background: linear-gradient(135deg, #0b1f14 0%, #0a1a2e 100%);
+        border: 1px solid #1c4a2a;
         border-radius: 12px;
-        padding: 0.75rem 1rem;
+        padding: 0.85rem 1rem;
         margin: 0.6rem 0 1.1rem;
     }
     .gap-label {
         font-size: 0.65rem;
-        color: #5a7a8a;
+        color: #3a7a50;
         text-transform: uppercase;
         letter-spacing: 1.5px;
         font-weight: 700;
@@ -96,16 +135,16 @@ st.markdown("""
         font-weight: 700;
         line-height: 1;
     }
-    .gap-pos { color: #00d4aa; }
-    .gap-neg { color: #ff4d6d; }
-    .gap-zero { color: #5a7a8a; }
+    .gap-pos  { color: #4ecb7a; }
+    .gap-neg  { color: #ff4d6d; }
+    .gap-zero { color: #3a7a50; }
     .gap-dot {
         width: 10px; height: 10px;
         border-radius: 50%;
         margin-left: 8px;
         animation: pulse 1.6s infinite;
     }
-    .gap-dot-pos { background: #00d4aa; box-shadow: 0 0 8px #00d4aa88; }
+    .gap-dot-pos { background: #4ecb7a; box-shadow: 0 0 8px #4ecb7a88; }
     .gap-dot-neg { background: #ff4d6d; box-shadow: 0 0 8px #ff4d6d88; }
     @keyframes pulse {
         0%, 100% { opacity: 1; transform: scale(1); }
@@ -115,7 +154,7 @@ st.markdown("""
     /* ── SECTION TITLE ────────────────────────────────── */
     .sec-title {
         font-size: 0.65rem;
-        color: #5a7a8a;
+        color: #3a7a50;
         text-transform: uppercase;
         letter-spacing: 2px;
         font-weight: 700;
@@ -128,21 +167,21 @@ st.markdown("""
         content: '';
         flex: 1;
         height: 1px;
-        background: #1e2e3e;
+        background: linear-gradient(90deg, #1c4a2a, transparent);
     }
 
     /* ── METRIC CARDS ─────────────────────────────────── */
     [data-testid="stMetric"] {
-        background: #0d1820 !important;
-        border: 1px solid #1e2e3e !important;
+        background: linear-gradient(135deg, #0b1f14 0%, #0a1a2e 100%) !important;
+        border: 1px solid #1c4a2a !important;
         border-radius: 12px !important;
         padding: 0.75rem 0.85rem !important;
         transition: border-color 0.2s;
     }
-    [data-testid="stMetric"]:hover { border-color: #00d4aa44 !important; }
+    [data-testid="stMetric"]:hover { border-color: #c8a93a55 !important; }
     [data-testid="stMetricLabel"] > div {
         font-size: 0.62rem !important;
-        color: #5a7a8a !important;
+        color: #3a7a50 !important;
         text-transform: uppercase;
         letter-spacing: 1.5px;
         font-weight: 700 !important;
@@ -151,28 +190,29 @@ st.markdown("""
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 1.45rem !important;
         font-weight: 700 !important;
-        color: #00d4aa !important;
+        color: #c8a93a !important;
     }
 
     /* ── WARNING / INFO ───────────────────────────────── */
     [data-testid="stAlert"] {
-        background: #0d1820 !important;
+        background: #0b1f14 !important;
         border-radius: 10px !important;
-        border-left: 3px solid #1e5c8a !important;
+        border-left: 3px solid #1c6b3a !important;
         font-size: 0.85rem !important;
         padding: 0.6rem 0.85rem !important;
+        color: #a0c8a8 !important;
     }
 
     /* ── EXPANDER ─────────────────────────────────────── */
     [data-testid="stExpander"] {
-        background: #0d1820 !important;
-        border: 1px solid #1e2e3e !important;
+        background: #0b1f14 !important;
+        border: 1px solid #1c4a2a !important;
         border-radius: 10px !important;
         overflow: hidden;
     }
     [data-testid="stExpander"] summary {
         font-size: 0.8rem !important;
-        color: #7a9ab0 !important;
+        color: #5a9a6a !important;
         padding: 0.6rem 0.85rem !important;
     }
 
@@ -188,49 +228,41 @@ st.markdown("""
     .stButton > button {
         width: 100% !important;
         height: 2.8rem !important;
-        background: linear-gradient(135deg, #005c8a 0%, #007a6e 100%) !important;
-        color: #e8f4ff !important;
+        background: linear-gradient(135deg, #1c6b3a 0%, #0e4a2a 100%) !important;
+        color: #e8f4e8 !important;
         font-family: 'Syne', sans-serif !important;
         font-size: 0.82rem !important;
         font-weight: 700 !important;
-        letter-spacing: 1px;
+        letter-spacing: 1.5px;
         text-transform: uppercase;
-        border: none !important;
+        border: 1px solid #2a8a4a44 !important;
         border-radius: 10px !important;
-        transition: opacity 0.15s !important;
+        transition: all 0.15s !important;
     }
-    .stButton > button:hover { opacity: 0.85 !important; }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #c8a93a 0%, #a08020 100%) !important;
+        color: #0b1f14 !important;
+        border-color: transparent !important;
+    }
 
     /* ── DATE INPUT ───────────────────────────────────── */
     [data-testid="stDateInput"] label {
         font-size: 0.7rem !important;
-        color: #5a7a8a !important;
+        color: #3a7a50 !important;
         text-transform: uppercase;
         letter-spacing: 1.5px;
     }
     [data-testid="stDateInput"] input {
-        background: #0d1820 !important;
-        border: 1px solid #1e2e3e !important;
+        background: #0b1f14 !important;
+        border: 1px solid #1c4a2a !important;
         border-radius: 10px !important;
-        color: #e8f4ff !important;
+        color: #e8f4e8 !important;
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 0.9rem !important;
     }
 
     /* ── DIVIDER ──────────────────────────────────────── */
-    hr { border-color: #1e2e3e !important; margin: 1.2rem 0 !important; }
-
-    /* ── RADAR RESULT CARD ────────────────────────────── */
-    .radar-tag {
-        display: inline-block;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.7rem;
-        font-weight: 700;
-        padding: 3px 9px;
-        border-radius: 20px;
-    }
-    .radar-buy  { background: #00d4aa22; color: #00d4aa; border: 1px solid #00d4aa44; }
-    .radar-sell { background: #ff4d6d22; color: #ff4d6d; border: 1px solid #ff4d6d44; }
+    hr { border-color: #1c4a2a !important; margin: 1.2rem 0 !important; }
 
     /* ── BOTTOM SAFE AREA ─────────────────────────────── */
     .bottom-space { height: 2rem; }
@@ -244,8 +276,14 @@ st.markdown("""
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="qb3-header">
-    <div class="qb3-logo">Quant<span>B3</span></div>
-    <div class="qb3-badge">B3 · Live</div>
+    <div class="qb3-logo-wrap">
+        <div class="qb3-icon">🐂</div>
+        <div class="qb3-title-block">
+            <div class="qb3-logo">Quant<span>B3</span></div>
+            <div class="qb3-sub">Scanner · B3</div>
+        </div>
+    </div>
+    <div class="qb3-badge">Live</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -401,15 +439,15 @@ with st.form("form_data"):
             gap_dia = res['Gap'].iloc[0]
 
             st.markdown(f"""
-            <div style="background:#0d1820;border:1px solid {cor}44;border-left:3px solid {cor};
+            <div style="background:linear-gradient(135deg,#0b1f14,#0a1a2e);border:1px solid {cor}44;border-left:3px solid {cor};
                         border-radius:10px;padding:0.75rem 1rem;margin-top:0.5rem;">
-                <div style="font-size:0.65rem;color:#5a7a8a;text-transform:uppercase;
+                <div style="font-size:0.65rem;color:#3a7a50;text-transform:uppercase;
                             letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Resultado</div>
                 <div style="font-size:1.3rem;font-weight:800;color:{cor};">{emoji} {label}</div>
-                <div style="margin-top:6px;display:flex;gap:1rem;font-size:0.78rem;color:#7a9ab0;">
-                    <span>GAP <b style="color:#e8f4ff;">{gap_dia:+.2f}%</b></span>
-                    <span>Alvo <b style="color:#e8f4ff;">{alvo_p}%</b></span>
-                    <span>Max <b style="color:#e8f4ff;">{max_r:.2f}%</b></span>
+                <div style="margin-top:6px;display:flex;gap:1rem;font-size:0.78rem;color:#5a9a6a;">
+                    <span>GAP <b style="color:#e8f4e8;">{gap_dia:+.2f}%</b></span>
+                    <span>Alvo <b style="color:#c8a93a;">{alvo_p}%</b></span>
+                    <span>Max <b style="color:#e8f4e8;">{max_r:.2f}%</b></span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
