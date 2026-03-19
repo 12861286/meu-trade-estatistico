@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import time
 
 # 1. Configuração de layout
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
@@ -32,7 +33,6 @@ def obter_gap_hoje(ticker):
     try:
         dados = yf.download(ticker, period="2d", progress=False)
         if len(dados) < 2: return 0.0
-        # CORREÇÃO TÉCNICA AQUI (Invisível no visual)
         dados.columns = [c[0] if isinstance(c, tuple) else c for c in dados.columns]
         fechamento_ontem = float(dados['Close'].iloc[-2])
         abertura_hoje = float(dados['Open'].iloc[-1])
@@ -57,7 +57,6 @@ st.subheader("Configurações do Backtest")
 lista_sugerida = carregar_lista_ativos()
 ativo = st.selectbox("Selecione ou DIGITE a ação:", lista_sugerida)
 
-# GAP HOJE (Igual ao seu original)
 gap_atual = obter_gap_hoje(ativo)
 cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
 st.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
@@ -86,7 +85,6 @@ if rodar or conferir_data:
         df = yf.download(ativo, start=data_inicio, progress=False)
         
         if not df.empty and len(df) > 10:
-            # CORREÇÃO TÉCNICA AQUI (Invisível no visual)
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             df = df[['Open', 'High', 'Low', 'Close']].copy()
             df.columns = ['Abertura', 'Maxima', 'Minima', 'Fechamento']
@@ -139,27 +137,44 @@ if rodar or conferir_data:
                         ranking.append({"GAP": f"{t_gap}%", "Dias": len(ev_r), "Alvo": f"{y_r}%", "Acerto": f"{x_r}%", "Máx Média": f"{round(ev_r['Max_Apos_Abertura'].mean(), 2)}%", "Mín Média": f"{round(ev_r['Queda_Apos_Abertura'].mean(), 2)}%"})
                 if ranking: st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
 
-                # RADAR (Restaurado como estava)
+                # --- RADAR COM ANTI-BLOQUEIO ---
                 st.markdown("---")
                 st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
-                dados_radar = yf.download(lista_sugerida, period="60d", progress=False)
                 radar_hoje = []
-                for ticker in lista_sugerida:
+                progresso_radar = st.progress(0)
+                
+                # Baixa preços atuais de todos
+                dados_atuais = yf.download(lista_sugerida, period="2d", progress=False)
+                
+                for i, ticker in enumerate(lista_sugerida):
+                    progresso_radar.progress((i + 1) / len(lista_sugerida))
                     try:
-                        # Correção para o MultiIndex no Radar também
-                        df_tic_open = dados_radar['Open'][ticker]
-                        df_tic_close = dados_radar['Close'][ticker]
-                        g_hoje = round(((float(df_tic_open.iloc[-1]) / float(df_tic_close.iloc[-2])) - 1) * 100, 2)
+                        # Pega GAP de hoje com segurança
+                        c_ontem = dados_atuais['Close'][ticker].iloc[-2]
+                        a_hoje = dados_atuais['Open'][ticker].iloc[-1]
+                        g_hoje = round(((a_hoje / c_ontem) - 1) * 100, 2)
                         
+                        # Tenta baixar histórico
                         df_r = yf.download(ticker, start=data_inicio, progress=False)
+                        if df_r.empty: 
+                            radar_hoje.append({"Ativo": ticker, "GAP Hoje": "⚠️ Bloqueado", "Acerto": "-", "Alvo": "-"})
+                            continue
+                        
                         df_r.columns = [c[0] if isinstance(c, tuple) else c for c in df_r.columns]
                         df_r['Gap_H'] = ((df_r['Open'] / df_r['Close'].shift(1)) - 1) * 100
                         df_r['Max_Apos_Abertura'] = ((df_r['High'] / df_r['Open']) - 1) * 100
+                        
                         f_h = df_r[(df_r['Gap_H'] <= g_hoje + 0.15) & (df_r['Gap_H'] >= g_hoje - 0.15)]
                         if len(f_h) >= 5:
                             yr, xr = calcular_melhor_performance(f_h)
-                            if xr >= filtro_radar: radar_hoje.append({"Ativo": ticker, "GAP Hoje": f"{g_hoje}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
-                    except: continue
+                            if xr >= filtro_radar:
+                                radar_hoje.append({"Ativo": ticker, "GAP Hoje": f"{g_hoje}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
+                        
+                        time.sleep(0.1) # Pequena pausa para evitar bloqueio
+                    except:
+                        radar_hoje.append({"Ativo": ticker, "GAP Hoje": "❌ Erro Dados", "Acerto": "-", "Alvo": "-"})
+                        continue
+                
                 if radar_hoje: st.table(pd.DataFrame(radar_hoje))
 
             st.markdown("---")
