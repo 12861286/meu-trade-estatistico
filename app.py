@@ -10,34 +10,41 @@ st.set_page_config(page_title="Scanner Quant B3", layout="wide")
 
 st.title("🔍 Scanner de Estatística de Abertura")
 
-# --- LINK DA SUA PLANILHA ---
+# --- LINK DA SUA PLANILHA PUBLICADA ---
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSg04Li1XStwno4T5cQxMuUwDS35uzY2eRoLPi8zUIpxadZpBPTGMbd_IyftA-rbjpuc6_5TQfi0hXv/pub?output=csv"
 
-# --- CARREGAR DADOS DA PLANILHA (MUITO MAIS RÁPIDO) ---
-@st.cache_data(ttl=3600) # Guarda os dados por 1 hora
+# --- FUNÇÃO PARA CARREGAR DADOS DA PLANILHA ---
+@st.cache_data(ttl=3600)
 def carregar_dados_planilha():
     try:
         df = pd.read_csv(URL_PLANILHA)
-        # Converte a coluna Date para data real
+        # Converte Data
         df['Date'] = pd.to_datetime(df['Date'])
-        return df
+        # GARANTE QUE PREÇOS SÃO NÚMEROS (Resolve o erro TypeError)
+        for col in ['Open', 'High', 'Low', 'Close']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df.dropna(subset=['Close'])
     except Exception as e:
         st.error(f"Erro ao carregar planilha: {e}")
         return pd.DataFrame()
 
-# --- FUNÇÃO DO GAP DE HOJE (ÚNICA CONSULTA AO YAHOO) ---
+# --- FUNÇÃO DO GAP DE HOJE (CONSULTA ÚNICA AO YAHOO) ---
 def obter_gap_hoje(ticker):
     try:
-        dados = yf.download(ticker, period="2d", progress=False)
+        # Baixa apenas 2 dias para ser rápido e não ser bloqueado
+        dados = yf.download(ticker, period="2d", progress=False, timeout=10)
         if len(dados) < 2: return 0.0
+        # Limpa colunas multi-index do yfinance novo
         dados.columns = [c[0] if isinstance(c, tuple) else c for c in dados.columns]
+        
         fechamento_ontem = float(dados['Close'].iloc[-2])
         abertura_hoje = float(dados['Open'].iloc[-1])
         return round(((abertura_hoje / fechamento_ontem) - 1) * 100, 2)
     except:
         return 0.0
 
-# --- FUNÇÃO PARA CALCULAR MELHOR PERFORMANCE ---
+# --- FUNÇÃO DE CÁLCULO DE PERFORMANCE ---
 def calcular_melhor_performance(df_eventos):
     melhor_y, melhor_x = 0, 0
     if len(df_eventos) >= 3:
@@ -50,75 +57,100 @@ def calcular_melhor_performance(df_eventos):
             melhor_x = round((len(df_eventos[df_eventos['Max_Apos_Abertura'] >= 0.5]) / len(df_eventos)) * 100, 1)
     return melhor_y, melhor_x
 
-# --- INÍCIO DO APP ---
+# --- CARREGAMENTO INICIAL ---
 df_completo = carregar_dados_planilha()
 
 if not df_completo.empty:
+    # Pega a lista de ativos direto da sua planilha
     lista_ativos = sorted(df_completo['Ativo'].unique())
     
     st.subheader("Configurações do Backtest")
     ativo = st.selectbox("Selecione a ação:", lista_ativos)
 
+    # Mostra o GAP de hoje em destaque
     gap_atual = obter_gap_hoje(ativo)
     cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
-    st.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="background-color:{cor_caixa}; padding:15px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px; border: 1px solid #ccc;">'
+                f'<b>GAP DE HOJE EM {ativo}: {gap_atual}%</b></div>', unsafe_allow_html=True)
 
     col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1, 1])
     with col_cfg1:
         data_inicio = st.date_input("Data de Início:", datetime(2020, 1, 1))
     with col_cfg2:
-        gap_digitado = st.number_input("GAP desejado (%):", value=-1.0, step=0.1)
+        gap_digitado = st.number_input("GAP desejado (%):", value=gap_atual if gap_atual != 0 else -1.0, step=0.1)
     with col_cfg3:
         filtro_radar = st.number_input("Mínimo de Acerto Radar (%):", value=80, step=5)
 
     rodar = st.button('🚀 Rodar Estatística e Radar', use_container_width=True)
 
     if rodar:
-        # Filtrar dados do ativo selecionado direto do DataFrame da Planilha
+        # Filtra histórico do ativo selecionado
         df_ativo = df_completo[(df_completo['Ativo'] == ativo) & (df_completo['Date'] >= pd.to_datetime(data_inicio))].copy()
-        
-        # Recalcular Gaps e Máximas (caso não estejam prontos na planilha)
         df_ativo = df_ativo.sort_values('Date')
+
+        # Cálculos de Colunas
         df_ativo['Gap'] = ((df_ativo['Open'] / df_ativo['Close'].shift(1)) - 1) * 100
         df_ativo['Max_Apos_Abertura'] = ((df_ativo['High'] / df_ativo['Open']) - 1) * 100
         df_ativo['Queda_Apos_Abertura'] = ((df_ativo['Low'] / df_ativo['Open']) - 1) * 100
         df_ativo['Resultado_Fechamento'] = ((df_ativo['Close'] / df_ativo['Open']) - 1) * 100
         df_ativo = df_ativo.dropna()
 
-        # ESTATÍSTICA DO GAP DIGITADO
-        eventos_digitados = df_ativo[(df_ativo['Gap'] <= gap_digitado + 0.15) & (df_ativo['Gap'] >= gap_digitado - 0.15)]
-        st.success(f"### 🎯 GAP Digitado: {gap_digitado}% | Ativo: {ativo}")
+        # 1. ESTATÍSTICA DO GAP
+        eventos = df_ativo[(df_ativo['Gap'] <= gap_digitado + 0.15) & (df_ativo['Gap'] >= gap_digitado - 0.15)]
         
-        if len(eventos_digitados) >= 3:
-            y_dig, x_dig = calcular_melhor_performance(eventos_digitados)
-            st.subheader(f"Probabilidade de {x_dig}% para atingir {y_dig}% de alvo.")
+        st.success(f"### 🎯 Resultados para GAP próximo de {gap_digitado}%")
+        if len(eventos) >= 3:
+            y_dig, x_dig = calcular_melhor_performance(eventos)
             
-        # --- NOVO RADAR (SEM BLOQUEIO) ---
-        st.markdown("---")
-        st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
-        radar_hoje = []
-        
-        # 1. Pegamos os GAPs de hoje de uma vez só (Pacote de ativos)
-        with st.spinner("Lendo GAPs de hoje..."):
-            # Limitamos a 40 ativos para o Radar não ficar lento
-            top_ativos = lista_ativos[:40] 
-            for ticker in top_ativos:
-                g_hoje = obter_gap_hoje(ticker)
-                
-                # Filtra o histórico desse ticker na planilha (Sem perguntar ao Yahoo!)
-                df_hist = df_completo[df_completo['Ativo'] == ticker].copy().sort_values('Date')
-                df_hist['Gap_H'] = ((df_hist['Open'] / df_hist['Close'].shift(1)) - 1) * 100
-                df_hist['Max_Apos_Abertura'] = ((df_hist['High'] / df_hist['Open']) - 1) * 100
-                
-                # Procura casos similares
-                f_h = df_hist[(df_hist['Gap_H'] <= g_hoje + 0.15) & (df_hist['Gap_H'] >= g_hoje - 0.15)]
-                
-                if len(f_h) >= 4:
-                    yr, xr = calcular_melhor_performance(f_h)
-                    if xr >= filtro_radar:
-                        radar_hoje.append({"Ativo": ticker, "GAP Hoje": f"{g_hoje}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
-        
-        if radar_hoje:
-            st.table(pd.DataFrame(radar_hoje))
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Ocorrências", len(eventos))
+            c2.metric("Probabilidade", f"{x_dig}%")
+            c3.metric("Alvo Sugerido", f"{y_dig}%")
+            
+            # Gráfico de Histórico
+            st.markdown("---")
+            st.subheader("📊 Histórico de Máximas e Mínimas (pós-abertura)")
+            fig = px.bar(eventos, x=eventos.index, y=['Max_Apos_Abertura', 'Queda_Apos_Abertura'],
+                         title="Variação Máxima e Mínima em dias similares",
+                         labels={'value': 'Percentual', 'Date': 'Data'}, barmode='group')
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.write("Nenhuma oportunidade encontrada com este filtro.")
+            st.warning("Poucos dados históricos para este GAP específico.")
+
+        # 2. RADAR DE ELITE (USANDO A PLANILHA)
+        st.markdown("---")
+        st.subheader(f"🚀 Radar de Elite (Acerto > {filtro_radar}%)")
+        radar_lista = []
+        progresso = st.progress(0)
+        
+        # Filtramos o Radar para os 50 ativos mais comuns para evitar lentidão
+        ativos_radar = lista_ativos[:50] 
+        
+        with st.spinner("Analisando mercado..."):
+            for i, t in enumerate(ativos_radar):
+                progresso.progress((i + 1) / len(ativos_radar))
+                
+                g_hoje = obter_gap_hoje(t)
+                if g_hoje == 0: continue
+                
+                # Filtra histórico na memória (sem download novo!)
+                df_h = df_completo[df_completo['Ativo'] == t].copy().sort_values('Date')
+                df_h['G'] = ((df_h['Open'] / df_h['Close'].shift(1)) - 1) * 100
+                df_h['M'] = ((df_h['High'] / df_h['Open']) - 1) * 100
+                
+                similares = df_h[(df_h['G'] <= g_hoje + 0.15) & (df_h['G'] >= g_hoje - 0.15)]
+                
+                if len(similares) >= 5:
+                    # Cálculo simplificado para o Radar ser rápido
+                    taxa = (len(similares[similares['M'] >= 0.5]) / len(similares)) * 100
+                    if taxa >= filtro_radar:
+                        radar_lista.append({"Ativo": t, "GAP Hoje": f"{g_hoje}%", "Confiança": f"{round(taxa,1)}%", "Alvo": "0.5%"})
+                
+                time.sleep(0.05) # Pequena pausa apenas por segurança
+
+        if radar_lista:
+            st.table(pd.DataFrame(radar_lista))
+        else:
+            st.info("Nenhuma oportunidade detectada no momento.")
+else:
+    st.error("Não foi possível carregar os dados da planilha. Verifique se ela está publicada como CSV.")
