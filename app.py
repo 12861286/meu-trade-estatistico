@@ -4,9 +4,8 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- 1. CONFIGURAÇÃO VISUAL ---
+# --- 1. CONFIGURAÇÃO E DADOS ---
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
-
 st.title("🔍 Scanner de Estatística de Abertura")
 
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTn6i6FnZ7awsqEZLkxsIRSFHgRonDnBrK33Jvi-gATeCnUbSgWQp3J0aMzr7VqC_b2hySzKN_LEMxS/pub?output=csv"
@@ -44,92 +43,74 @@ def calcular_performance(df_ev):
                 if taxa >= 70: melhor_y, melhor_x = round(alvo, 2), round(taxa, 1)
     return melhor_y, melhor_x
 
-# --- 2. ÁREA DE CONFIGURAÇÃO ---
+# --- 2. CONFIGURAÇÕES ---
 df_mestre = carregar_banco_dados()
 
 if not df_mestre.empty:
-    lista_sugerida = sorted(df_mestre['Ativo'].unique())
-    ativo = st.selectbox("Selecione ou DIGITE a ação:", lista_sugerida)
+    lista_ativos = sorted(df_mestre['Ativo'].unique())
+    ativo_sel = st.selectbox("Ativo para análise detalhada:", lista_ativos)
+    
+    gap_hoje_sel = obter_gap_hoje(ativo_sel)
+    st.info(f"GAP de hoje para {ativo_sel}: {gap_hoje_sel}%")
 
-    gap_atual = obter_gap_hoje(ativo)
-    cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
-    st.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        data_ini = st.date_input("Início do Backtest:", datetime.now() - timedelta(days=3*365))
+    with col2:
+        min_radar = st.number_input("Mínimo de Acerto Radar (%):", value=80)
 
-    data_3_anos = datetime.now() - timedelta(days=3*365)
+    btn_rodar = st.button("🚀 Rodar Estatística e Radar", use_container_width=True)
 
-    col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1, 1])
-    with col_cfg1:
-        data_inicio = st.date_input("Data de Início:", data_3_anos)
-    with col_cfg2:
-        gap_digitado = st.number_input("GAP desejado (%):", value=gap_atual, step=0.1)
-    with col_cfg3:
-        filtro_radar = st.number_input("Mínimo de Acerto Radar (%):", value=80, step=5)
-
-    rodar = st.button('🚀 Rodar Estatística e Radar', use_container_width=True)
-
-    # --- 3. VERIFICAR RESULTADO POR DATA (COM OBJETIVO) ---
-    st.markdown("---")
-    st.subheader("🔍 Verificar Resultado por Data Específica")
-    col_dt1, col_dt2 = st.columns([2, 1])
-    with col_dt1:
-        data_pesquisa = st.date_input("Escolha a data:", datetime.now(), key="dt_pesq")
-    with col_dt2:
-        btn_conferir = st.button('📅 Conferir Resultado da Data', use_container_width=True)
-
-    if btn_conferir:
-        res_dia = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'].dt.date == data_pesquisa)]
-        if not res_dia.empty:
-            # Calculamos o alvo estatístico baseado no histórico até aquela data
-            df_historico_data = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'] < pd.to_datetime(data_pesquisa))]
-            alvo_ref, acerto_ref = calcular_performance(df_historico_data)
+    if btn_rodar:
+        # --- 3. RADAR DE ELITE (RECOMENDAÇÕES DO DIA) ---
+        st.markdown("---")
+        st.subheader(f"🚀 Radar de Elite (> {min_radar}% de Acerto)")
+        st.write("Processando ativos da lista com o GAP de abertura de hoje...")
+        
+        radar_data = []
+        progresso = st.progress(0)
+        
+        for i, tk in enumerate(lista_ativos):
+            g_atual = obter_gap_hoje(tk)
+            # Filtra histórico do ativo para GAPs similares ao de hoje (margem 0.15)
+            df_hist = df_mestre[(df_mestre['Ativo'] == tk) & 
+                                (df_mestre['Date'] >= pd.to_datetime(data_ini)) &
+                                (df_mestre['Gap'] <= g_atual + 0.15) & 
+                                (df_mestre['Gap'] >= g_atual - 0.15)]
             
-            # Verificamos se atingiu
-            atingiu = "✅ SIM" if (alvo_ref > 0 and res_dia['Max_A'].iloc[0] >= alvo_ref) or (alvo_ref < 0 and res_dia['Min_A'].iloc[0] <= alvo_ref) else "❌ NÃO"
-            
-            st.markdown(f"### Detalhes de {data_pesquisa.strftime('%d/%m/%Y')} - {ativo}")
-            
-            # Exibição em métricas
-            c1, c2, c3 = st.columns(3)
-            c1.metric("GAP Abertura", f"{res_dia['Gap'].iloc[0]:.2f}%")
-            c2.metric("Objetivo Calculado", f"{alvo_ref}%", f"Acerto: {acerto_ref}%")
-            c3.metric("Atingiu Objetivo?", atingiu)
-
-            st.markdown("#### Performance Real do Dia:")
-            p1, p2, p3 = st.columns(3)
-            p1.metric("Máxima Alcançada (Max_A)", f"{res_dia['Max_A'].iloc[0]:.2f}%")
-            p2.metric("Mínima Alcançada (Min_A)", f"{res_dia['Min_A'].iloc[0]:.2f}%")
-            p3.metric("Fechamento", f"{res_dia['Fech_Apos_Abertura'].iloc[0]:.2f}%")
+            if len(df_hist) >= 5: # Mínimo de 5 ocorrências para ser confiável
+                alvo, acerto = calcular_performance(df_hist)
+                if acerto >= min_radar:
+                    radar_data.append({
+                        "Ativo": tk,
+                        "GAP Hoje": f"{g_atual}%",
+                        "Direção": "COMPRA 🟢" if alvo > 0 else "VENDA 🔴",
+                        "Alvo Sugerido": f"{alvo}%",
+                        "Assertividade": f"{acerto}%",
+                        "Amostra": f"{len(df_hist)} dias"
+                    })
+            progresso.progress((i + 1) / len(lista_ativos))
+        
+        if radar_data:
+            st.table(pd.DataFrame(radar_data).sort_values(by="Assertividade", ascending=False))
         else:
-            st.warning(f"Sem dados para {ativo} em {data_pesquisa.strftime('%d/%m/%Y')}.")
+            st.warning("Nenhum ativo atingiu o critério de acerto hoje.")
 
-    # --- 4. RESULTADOS GERAIS DO BACKTEST ---
-    if rodar:
-        df_ativo = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'] >= pd.to_datetime(data_inicio))]
-        if not df_ativo.empty:
-            ev_esp = df_ativo[(df_ativo['Gap'] <= gap_digitado + 0.15) & (df_ativo['Gap'] >= gap_digitado - 0.15)]
-            if not ev_esp.empty:
-                st.markdown(f"### 🎯 Resumo Estratégico: {ativo}")
-                total = len(ev_esp)
-                pos_count = len(ev_esp[ev_esp['Max_A'] > 0])
-                neg_count = len(ev_esp[ev_esp['Min_A'] < 0])
-                alvo_n, acerto_n = calcular_performance(ev_esp)
+        # --- 4. MAPA DE GAPS (ATIVO SELECIONADO) ---
+        st.markdown("---")
+        st.subheader(f"📋 Mapa de GAPs: {ativo_sel}")
+        df_ativo = df_mestre[(df_mestre['Ativo'] == ativo_sel) & (df_mestre['Date'] >= pd.to_datetime(data_ini))]
+        
+        ranking = []
+        for val in [x * 0.5 for x in range(-10, 11)]:
+            t_gap = round(val, 2)
+            ev_r = df_ativo[(df_ativo['Gap'] <= t_gap + 0.2) & (df_ativo['Gap'] >= t_gap - 0.2)]
+            if len(ev_r) >= 3:
+                yr, xr = calcular_performance(ev_r)
+                ranking.append({"GAP Ref": f"{t_gap}%", "Dias": len(ev_r), "Alvo": f"{yr}%", "Acerto": f"{xr}%"})
+        
+        if ranking:
+            st.table(pd.DataFrame(ranking).sort_values(by="GAP Ref", ascending=False))
 
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Maior Alta", f"{ev_esp['Max_A'].max():.2f}%")
-                m2.metric("Maior Mínima", f"{ev_esp['Min_A'].min():.2f}%")
-                m3.metric("Freq. Positiva", f"{pos_count} dias", f"{(pos_count/total)*100:.1f}%")
-                m4.metric("Nível Alvo", f"{alvo_n}%", f"Prob: {acerto_n}%")
-
-            # Mapa de GAPs e Radar de Elite seguem abaixo...
-            st.markdown("---")
-            st.subheader("📋 Mapa de GAPs (+5% a -5%)")
-            ranking = []
-            for val in [x * 0.5 for x in range(-10, 11)]:
-                t_gap = round(val, 2)
-                ev_r = df_ativo[(df_ativo['Gap'] <= t_gap + 0.2) & (df_ativo['Gap'] >= t_gap - 0.2)]
-                if len(ev_r) >= 3:
-                    yr, xr = calcular_performance(ev_r)
-                    ranking.append({"GAP": f"{t_gap}%", "Dias": len(ev_r), "Alvo": f"{yr}%", "Acerto": f"{xr}%", "Direção": "Alta" if yr > 0 else "Baixa"})
-            if ranking: st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
 else:
     st.error("Erro ao carregar banco de dados.")
