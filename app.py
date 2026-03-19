@@ -3,122 +3,95 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import time
 
-# 1. Configuração de layout (Seu visual original)
+# 1. Configuração de layout original
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
 st.title("🔍 Scanner de Estatística: Compra e Venda")
 
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSg04Li1XStwno4T5cQxMuUwDS35uzY2eRoLPi8zUIpxadZpBPTGMbd_IyftA-rbjpuc6_5TQfi0hXv/pub?output=csv"
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600) # Cache mais curto para destravar
 def carregar_dados():
     try:
-        df = pd.read_csv(URL_PLANILHA)
-        df['Date'] = pd.to_datetime(df['Date'])
+        # Lendo a planilha forçando as colunas como texto para limpar antes de converter
+        df = pd.read_csv(URL_PLANILHA, dtype=str)
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         
-        # LIMPEZA CRÍTICA: Remove pontos de milhar e garante números
         colunas_num = ['Open', 'High', 'Low', 'Close', 'Gap', 'Max_A', 'Min_A']
         for col in colunas_num:
             if col in df.columns:
-                # Transforma em texto, remove pontos e vira número
-                df[col] = df[col].astype(str).str.replace('.', '', regex=False)
+                # Limpeza ultra-rápida: remove pontos e converte
+                df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        return df.dropna(subset=['Open', 'Close'])
+        return df.dropna(subset=['Ativo', 'Open'])
     except Exception as e:
-        st.error(f"Erro ao processar dados: {e}")
+        st.error(f"Erro ao carregar: {e}")
         return pd.DataFrame()
 
 def obter_gap_hoje(ticker):
     try:
         d = yf.download(ticker, period="2d", progress=False, timeout=10)
-        if len(d) < 2: return 0.0
+        if d.empty: return 0.0
         d.columns = [c[0] if isinstance(c, tuple) else c for c in d.columns]
-        fechamento_ontem = float(d['Close'].iloc[-2])
-        abertura_hoje = float(d['Open'].iloc[-1])
-        return round(((abertura_hoje / fechamento_ontem) - 1) * 100, 2)
-    except:
-        return 0.0
+        return round(((d['Open'].iloc[-1] / d['Close'].iloc[-2]) - 1) * 100, 2)
+    except: return 0.0
 
+# Execução
 df_mestre = carregar_dados()
 
 if not df_mestre.empty:
     lista_ativos = sorted(df_mestre['Ativo'].unique())
     
-    # --- SEU VISUAL ORIGINAL DE CONFIGURAÇÃO ---
     st.subheader("Configurações do Backtest")
     ativo = st.selectbox("Selecione a ação:", lista_ativos)
     
     gap_atual = obter_gap_hoje(ativo)
-    cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
-    st.markdown(f'<div style="background-color:{cor_caixa}; padding:15px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px; border: 1px solid #ccc;">'
-                f'<b>GAP HOJE EM {ativo}: {gap_atual}%</b></div>', unsafe_allow_html=True)
+    cor = "#d4edda" if gap_atual >= 0 else "#f8d7da"
+    st.markdown(f'<div style="background-color:{cor}; padding:15px; border-radius:10px; text-align:center; color: black;"><b>GAP HOJE EM {ativo}: {gap_atual}%</b></div>', unsafe_allow_html=True)
 
-    col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1, 1])
-    with col_cfg1:
-        data_inicio = st.date_input("Data de Início:", datetime(2020, 1, 1))
-    with col_cfg2:
-        gap_digitado = st.number_input("GAP desejado (%):", value=gap_atual, step=0.1)
-    with col_cfg3:
-        filtro_radar = st.number_input("Mínimo de Acerto Radar (%):", value=80, step=5)
+    col1, col2, col3 = st.columns(3)
+    with col1: data_ini = st.date_input("Início:", datetime(2020, 1, 1))
+    with col2: gap_alvo = st.number_input("GAP alvo (%):", value=gap_atual, step=0.1)
+    with col3: min_acc = st.number_input("Mín. Acerto (%):", value=80)
 
-    rodar = st.button('🚀 Rodar Estatística e Radar', use_container_width=True)
-
-    if rodar:
-        # 1. RESULTADOS (USANDO MÉTRICAS COMO NO SEU VISUAL ANTIGO)
-        df_ativo = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'] >= pd.to_datetime(data_inicio))].copy()
-        eventos = df_ativo[(df_ativo['Gap'] <= gap_digitado + 0.15) & (df_ativo['Gap'] >= gap_digitado - 0.15)]
+    if st.button('🚀 Rodar Estatística e Radar', use_container_width=True):
+        # Estatística do Ativo Selecionado
+        df_a = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'] >= pd.to_datetime(data_ini))]
+        ev = df_a[(df_a['Gap'] <= gap_alvo + 0.15) & (df_a['Gap'] >= gap_alvo - 0.15)]
         
-        st.success(f"### 🎯 Resultados para GAP de {gap_digitado}%")
-        if not eventos.empty:
-            acc_buy = (len(eventos[eventos['Max_A'] >= 0.5]) / len(eventos)) * 100
-            acc_sell = (len(eventos[eventos['Min_A'] <= -0.5]) / len(eventos)) * 100
-            
-            # Mostra em colunas bonitas como você gosta
+        if not ev.empty:
+            st.success(f"### Resultados para {ativo}")
             c1, c2, c3 = st.columns(3)
-            c1.metric("Ocorrências", len(eventos))
-            c2.metric("Chance COMPRA (+0.5%)", f"{round(acc_buy, 1)}%")
-            c3.metric("Chance VENDA (-0.5%)", f"{round(acc_sell, 1)}%")
-        else:
-            st.warning("Sem dados históricos para este GAP.")
+            c1.metric("Ocorrências", len(ev))
+            c2.metric("Compra (+0.5%)", f"{round((len(ev[ev['Max_A'] >= 0.5])/len(ev))*100, 1)}%")
+            c3.metric("Venda (-0.5%)", f"{round((len(ev[ev['Min_A'] <= -0.5])/len(ev))*100, 1)}%")
 
-        # 2. RADAR DE ELITE (COM AS TABS QUE VOCÊ PEDIU)
+        # Radar Simples e Rápido
         st.markdown("---")
-        st.subheader(f"🚀 Radar de Elite (Acerto > {filtro_radar}%)")
+        st.subheader("🚀 Radar de Elite")
+        abas = st.tabs(["65%", "85%", "100%"])
         
-        abas = st.tabs(["65%", "75%", "85%", "95%", "100%"])
         radar_lista = []
+        # Analisa apenas os top 20 para destravar o site agora
+        for t in lista_ativos[:20]:
+            g = obter_gap_hoje(t)
+            sim = df_mestre[(df_mestre['Ativo'] == t) & (df_mestre['Gap'] <= g + 0.15) & (df_mestre['Gap'] >= g - 0.15)]
+            if len(sim) >= 5:
+                acc_c = (len(sim[sim['Max_A'] >= 0.5]) / len(sim)) * 100
+                acc_v = (len(sim[sim['Min_A'] <= -0.5]) / len(sim)) * 100
+                if acc_c >= 65 or acc_v >= 65:
+                    lado = "🟢 COMPRA" if acc_c >= acc_v else "🔴 VENDA"
+                    perc = max(acc_c, acc_v)
+                    radar_lista.append({"Ativo": t, "GAP": f"{g}%", "Lado": lado, "Acerto": perc})
         
-        with st.spinner("Analisando mercado..."):
-            for t in lista_ativos[:40]:
-                g_hoje = obter_gap_hoje(t)
-                hist_t = df_mestre[df_mestre['Ativo'] == t]
-                similares = hist_t[(hist_t['Gap'] <= g_hoje + 0.15) & (hist_t['Gap'] >= g_hoje - 0.15)]
-                
-                if len(similares) >= 5:
-                    buy_t = (len(similares[similares['Max_A'] >= 0.5]) / len(similares)) * 100
-                    sell_t = (len(similares[similares['Min_A'] <= -0.5]) / len(similares)) * 100
-                    
-                    if buy_t >= sell_t and buy_t >= 65:
-                        radar_lista.append({"Ativo": t, "GAP": f"{g_hoje}%", "Lado": "🟢 COMPRA", "Acerto": buy_t})
-                    elif sell_t > buy_t and sell_t >= 65:
-                        radar_lista.append({"Ativo": t, "GAP": f"{g_hoje}%", "Lado": "🔴 VENDA", "Acerto": sell_t})
-
         df_radar = pd.DataFrame(radar_lista)
         if not df_radar.empty:
-            for i, corte in enumerate([65, 75, 85, 95, 100]):
+            for i, n in enumerate([65, 85, 100]):
                 with abas[i]:
-                    final = df_radar[df_radar['Acerto'] >= corte].sort_values('Acerto', ascending=False)
-                    if not final.empty:
-                        st.table(final)
-                    else:
-                        st.write("Nada neste nível hoje.")
+                    st.table(df_radar[df_radar['Acerto'] >= n])
 
-        # 3. GRÁFICO (O SEU ORIGINAL)
-        st.markdown("---")
-        st.subheader("📊 Histórico de Variações")
-        fig = px.bar(df_ativo.tail(50), x='Date', y=['Max_A', 'Min_A'], barmode='group')
+        fig = px.bar(df_a.tail(50), x='Date', y=['Max_A', 'Min_A'], barmode='group')
         st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("Erro ao carregar a planilha. Verifique os dados.")
+    st.info("Aguardando carregamento da planilha... Se demorar, verifique se a planilha Google está 'Publicada na Web' como CSV.")
