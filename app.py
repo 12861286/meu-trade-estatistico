@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import time
+import requests
 
 # 1. Configuração de layout
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
@@ -28,16 +29,31 @@ def carregar_lista_ativos():
     ]
     return sorted(list(set(acoes)))
 
+# --- FUNÇÃO DE DOWNLOAD REFORÇADA ---
+def download_seguro(ticker, start=None, period=None):
+    # Tenta baixar os dados enganando o bloqueio do Yahoo
+    for tentativa in range(2): # Tenta 2 vezes
+        try:
+            if start:
+                df = yf.download(ticker, start=start, progress=False, timeout=10)
+            else:
+                df = yf.download(ticker, period=period, progress=False, timeout=10)
+            
+            if not df.empty:
+                return df
+            time.sleep(0.5) # Espera um pouco antes da segunda tentativa
+        except:
+            continue
+    return pd.DataFrame()
+
 # --- FUNÇÃO DO GAP DE HOJE ---
 def obter_gap_hoje(ticker):
-    try:
-        dados = yf.download(ticker, period="2d", progress=False)
-        if len(dados) < 2: return 0.0
-        dados.columns = [c[0] if isinstance(c, tuple) else c for c in dados.columns]
-        fechamento_ontem = float(dados['Close'].iloc[-2])
-        abertura_hoje = float(dados['Open'].iloc[-1])
-        return round(((abertura_hoje / fechamento_ontem) - 1) * 100, 2)
-    except: return 0.0
+    dados = download_seguro(ticker, period="2d")
+    if len(dados) < 2: return 0.0
+    dados.columns = [c[0] if isinstance(c, tuple) else c for c in dados.columns]
+    fechamento_ontem = float(dados['Close'].iloc[-2])
+    abertura_hoje = float(dados['Open'].iloc[-1])
+    return round(((abertura_hoje / fechamento_ontem) - 1) * 100, 2)
 
 # --- FUNÇÃO PARA CALCULAR MELHOR PERFORMANCE ---
 def calcular_melhor_performance(df_eventos):
@@ -82,7 +98,7 @@ with col_dt2:
 # --- PROCESSAMENTO ---
 if rodar or conferir_data:
     with st.spinner(f'Processando {ativo}...'):
-        df = yf.download(ativo, start=data_inicio, progress=False)
+        df = download_seguro(ativo, start=data_inicio)
         
         if not df.empty and len(df) > 10:
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
@@ -137,26 +153,24 @@ if rodar or conferir_data:
                         ranking.append({"GAP": f"{t_gap}%", "Dias": len(ev_r), "Alvo": f"{y_r}%", "Acerto": f"{x_r}%", "Máx Média": f"{round(ev_r['Max_Apos_Abertura'].mean(), 2)}%", "Mín Média": f"{round(ev_r['Queda_Apos_Abertura'].mean(), 2)}%"})
                 if ranking: st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
 
-                # --- RADAR COM ANTI-BLOQUEIO ---
+                # --- RADAR REFORÇADO ---
                 st.markdown("---")
                 st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
                 radar_hoje = []
                 progresso_radar = st.progress(0)
                 
-                # Baixa preços atuais de todos
-                dados_atuais = yf.download(lista_sugerida, period="2d", progress=False)
+                # Download inicial do dia atual de todos
+                dados_atuais = download_seguro(lista_sugerida, period="2d")
                 
                 for i, ticker in enumerate(lista_sugerida):
                     progresso_radar.progress((i + 1) / len(lista_sugerida))
                     try:
-                        # Pega GAP de hoje com segurança
                         c_ontem = dados_atuais['Close'][ticker].iloc[-2]
                         a_hoje = dados_atuais['Open'][ticker].iloc[-1]
                         g_hoje = round(((a_hoje / c_ontem) - 1) * 100, 2)
                         
-                        # Tenta baixar histórico
-                        df_r = yf.download(ticker, start=data_inicio, progress=False)
-                        if df_r.empty: 
+                        df_r = download_seguro(ticker, start=data_inicio)
+                        if df_r.empty:
                             radar_hoje.append({"Ativo": ticker, "GAP Hoje": "⚠️ Bloqueado", "Acerto": "-", "Alvo": "-"})
                             continue
                         
@@ -170,9 +184,8 @@ if rodar or conferir_data:
                             if xr >= filtro_radar:
                                 radar_hoje.append({"Ativo": ticker, "GAP Hoje": f"{g_hoje}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
                         
-                        time.sleep(0.1) # Pequena pausa para evitar bloqueio
+                        time.sleep(0.15) # Pausa estratégica
                     except:
-                        radar_hoje.append({"Ativo": ticker, "GAP Hoje": "❌ Erro Dados", "Acerto": "-", "Alvo": "-"})
                         continue
                 
                 if radar_hoje: st.table(pd.DataFrame(radar_hoje))
