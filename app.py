@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- 1. CONFIGURAÇÃO VISUAL ---
+# --- 1. CONFIGURAÇÃO VISUAL (PADRÃO CARLOS) ---
 st.set_page_config(page_title="Scanner Quant B3", layout="wide")
 
 st.title("🔍 Scanner de Estatística de Abertura")
@@ -44,8 +44,7 @@ def calcular_performance(df_ev):
                 if taxa >= 70: melhor_y, melhor_x = round(alvo, 2), round(taxa, 1)
     return melhor_y, melhor_x
 
-# --- 2. CONFIGURAÇÕES DO BACKTEST ---
-st.subheader("Configurações do Backtest")
+# --- 2. CONFIGURAÇÕES ---
 df_mestre = carregar_banco_dados()
 
 if not df_mestre.empty:
@@ -68,30 +67,39 @@ if not df_mestre.empty:
 
     rodar = st.button('🚀 Rodar Estatística e Radar', use_container_width=True)
 
-    # --- 3. SEÇÃO DE BUSCA POR DATA (FORA DO IF RODAR PARA NÃO QUEBRAR) ---
+    # --- 3. VERIFICAR RESULTADO POR DATA (SOLICITAÇÃO CARLOS) ---
     st.markdown("---")
     st.subheader("🔍 Verificar Resultado por Data Específica")
     col_dt1, col_dt2 = st.columns([2, 1])
     with col_dt1:
-        data_alvo = st.date_input("Escolha a data para conferir:", datetime.now(), key="busca_data")
+        data_pesquisa = st.date_input("Escolha a data:", datetime.now(), key="dt_pesq")
     with col_dt2:
-        conferir = st.button('📅 Conferir Resultado da Data', use_container_width=True)
+        btn_conferir = st.button('📅 Conferir Resultado da Data', use_container_width=True)
 
-    if conferir:
-        res_data = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'].dt.date == data_alvo)]
-        if not res_data.empty:
-            st.success(f"Resultado em {data_alvo.strftime('%d/%m/%Y')} para {ativo}")
-            st.table(res_data[['Date', 'Gap', 'Max_A', 'Min_A', 'Close']])
+    if btn_conferir:
+        res_dia = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'].dt.date == data_pesquisa)]
+        if not res_dia.empty:
+            # Pegamos o alvo estatístico para comparar
+            alvo_ref, _ = calcular_performance(df_mestre[df_mestre['Ativo'] == ativo])
+            
+            # Verificamos se atingiu o objetivo
+            atingiu = "✅ SIM" if (alvo_ref > 0 and res_dia['Max_A'].iloc[0] >= alvo_ref) or (alvo_ref < 0 and res_dia['Min_A'].iloc[0] <= alvo_ref) else "❌ NÃO"
+            
+            st.markdown(f"### Resultado de {data_pesquisa.strftime('%d/%m/%Y')} para {ativo}")
+            
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("GAP de Abertura", f"{res_dia['Gap'].iloc[0]:.2f}%")
+            c2.metric("Atingiu Objetivo?", atingiu)
+            c3.metric("Máxima do Dia (Max_A)", f"{res_dia['Max_A'].iloc[0]:.2f}%")
+            c4.metric("Mínima do Dia (Min_A)", f"{res_dia['Min_A'].iloc[0]:.2f}%")
         else:
-            st.warning("Nenhum dado encontrado para esta data e ativo.")
+            st.warning(f"Sem dados para {ativo} na data selecionada.")
 
-    # --- 4. RESULTADOS DA ESTATÍSTICA ---
+    # --- 4. RESULTADOS GERAIS ---
     if rodar:
         df_ativo = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'] >= pd.to_datetime(data_inicio))]
-        
         if not df_ativo.empty:
             ev_esp = df_ativo[(df_ativo['Gap'] <= gap_digitado + 0.15) & (df_ativo['Gap'] >= gap_digitado - 0.15)]
-            
             if not ev_esp.empty:
                 st.markdown(f"### 🎯 Resumo Estratégico: {ativo}")
                 total = len(ev_esp)
@@ -99,17 +107,11 @@ if not df_mestre.empty:
                 neg_count = len(ev_esp[ev_esp['Min_A'] < 0])
                 alvo_n, acerto_n = calcular_performance(ev_esp)
 
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Maior Alta", f"{ev_esp['Max_A'].max():.2f}%")
-                c2.metric("Maior Mínima", f"{ev_esp['Min_A'].min():.2f}%")
-                c3.metric("Fech. Médio Alta", f"{ev_esp[ev_esp['Fech_Apos_Abertura']>0]['Fech_Apos_Abertura'].mean():.2f}%")
-                c4.metric("Fech. Médio Baixa", f"{ev_esp[ev_esp['Fech_Apos_Abertura']<0]['Fech_Apos_Abertura'].mean():.2f}%")
-
-                st.markdown("---")
-                f1, f2, f3 = st.columns(3)
-                f1.metric("Frequência Positiva", f"{pos_count} dias", f"{(pos_count/total)*100:.1f}%")
-                f2.metric("Frequência Negativa", f"{neg_count} dias", f"-{(neg_count/total)*100:.1f}%")
-                f3.metric("Nível (70% Acerto)", f"{alvo_n}%", f"Probabilidade: {acerto_n}%")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Maior Alta Hist.", f"{ev_esp['Max_A'].max():.2f}%")
+                m2.metric("Maior Mínima Hist.", f"{ev_esp['Min_A'].min():.2f}%")
+                m3.metric("Frequência (+)", f"{pos_count} dias", f"{(pos_count/total)*100:.1f}%")
+                m4.metric("Nível Alvo", f"{alvo_n}%", f"Acerto: {acerto_n}%")
 
             # Mapa de GAPs
             st.markdown("---")
@@ -136,11 +138,5 @@ if not df_mestre.empty:
                     if xr >= filtro_radar:
                         radar_resumo.append({"Ativo": tk, "Direção": "Alta 🟢" if yr > 0 else "Baixa 🔴", "GAP": f"{g_tk}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
             if radar_resumo: st.table(pd.DataFrame(radar_resumo))
-
-            # Gráfico
-            st.markdown("---")
-            st.subheader(f"📊 Histórico Visual - {ativo}")
-            st.plotly_chart(px.bar(df_ativo.tail(50), x='Date', y=['Max_A', 'Min_A'], barmode='group'), use_container_width=True)
-
 else:
-    st.error("Erro ao carregar banco de dados.")
+    st.error("Planilha não carregada.")
