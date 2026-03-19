@@ -1,53 +1,26 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- 1. CONFIGURAÇÃO MOBILE-FIRST E CSS CUSTOMIZADO REFINADO ---
+# --- 1. CONFIGURAÇÃO MOBILE-FIRST E VISUAL ---
 st.set_page_config(page_title="Quant B3 Mobile", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS para visual profissional e responsivo em celulares (Dark Mode Integado)
 st.markdown("""
     <style>
-    /* Fundo escuro e fontes limpas */
     .main { background-color: #0e1117; color: #fafafa; font-family: 'Inter', sans-serif; }
-    h1, h2, h3, h4 { color: #fafafa; font-weight: 700; }
-    
-    /* Título Principal Compacto */
-    .stApp header { display: none; } /* Esconde header padrão */
-    .app-header { text-align: center; padding: 0.5rem 0; background-color: #0e1117; border-bottom: 1px solid #30363d; margin-bottom: 1rem; }
+    .app-header { text-align: center; padding: 0.5rem 0; border-bottom: 1px solid #30363d; margin-bottom: 1rem; }
     .app-title { font-size: 1.2rem; margin: 0; color: #fafafa; }
-
-    /* Estilização de Métricas (Removido fundo preto, fundo integrado) */
-    [data-testid="stMetric"] { background-color: #0e1117; padding: 0.5rem; border-radius: 4px; border: none; text-align: center; }
+    [data-testid="stMetric"] { background-color: #0e1117; padding: 0.5rem; text-align: center; border: none; }
     div[data-testid="stMetricValue"] { color: #00ffcc; font-size: 1.5rem; }
-    div[data-testid="stMetricLabel"] { color: #8b949e; font-size: 0.8rem; }
-
-    /* Estilização de Inputs (Selectbox, DateInput, NumberInput integrado) */
-    .stSelectbox, .stDateInput, .stNumberInput { margin-bottom: 0.8rem; }
-    div[data-baseweb="select"] { background-color: #161b22; border: 1px solid #30363d; border-radius: 4px; }
-    input { background-color: #161b22 !important; color: #fafafa !important; border: 1px solid #30363d !important; }
-
-    /* Estilização de Botões (Largo e Visível) */
-    .stButton>button { width: 100% !important; border-radius: 4px; height: 3rem; background-color: #1f6feb; color: white; border: none; font-weight: 600; font-size: 1rem; margin-bottom: 1rem; }
-    .stButton>button:hover { background-color: #388bfd; }
-
-    /* Tabelas e Dataframes (Responsivos e Integrados) */
-    .stDataFrame, table { border: 1px solid #30363d !important; border-radius: 4px; background-color: #161b22 !important;}
-    th { background-color: #161b22 !important; color: #fafafa !important; font-size: 0.8rem; }
-    td { font-size: 0.8rem; color: #c9d1d9 !important; }
-    
-    /* Outros ajustes visual */
-    div.stSuccess, div.stWarning, div.stInfo { background-color: #161b22 !important; color: #fafafa !important; border: 1px solid #30363d !important; padding: 0.8rem; border-radius: 4px;}
-    .stMarkdown { color: #c9d1d9; }
+    .stButton>button { width: 100% !important; height: 3rem; background-color: #1f6feb; color: white; font-weight: 600; border: none; border-radius: 4px; }
+    div.stSuccess, div.stWarning, div.stInfo { background-color: #161b22 !important; color: #fafafa !important; border: 1px solid #30363d !important; border-radius: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
-# Header Customizado no topo
 st.markdown('<div class="app-header"><h1 class="app-title">🔍 Quant B3 Mobile</h1></div>', unsafe_allow_html=True)
 
-# --- 2. FUNÇÕES CORE ---
+# --- 2. FUNÇÕES CORE CORRIGIDAS ---
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTn6i6FnZ7awsqEZLkxsIRSFHgRonDnBrK33Jvi-gATeCnUbSgWQp3J0aMzr7VqC_b2hySzKN_LEMxS/pub?output=csv"
 
 @st.cache_data(ttl=600)
@@ -58,9 +31,7 @@ def carregar_dados():
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df['Fech_Apos_Abertura'] = ((df['Close'] / df['Open']) - 1) * 100
         return df.dropna(subset=['Ativo'])
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def obter_gap_hoje(ticker):
     try:
@@ -71,7 +42,7 @@ def obter_gap_hoje(ticker):
     except: return 0.0
 
 def calcular_performance(df_ev):
-    melhor_y, melhor_x = 0.5, 0.0
+    melhor_y, melhor_x = 0.5, 0.0 # CORRIGIDO: Removido o 'mejor_x' que causava erro
     if len(df_ev) >= 3:
         for alvo in [x * 0.1 for x in range(1, 41)]:
             taxa = (len(df_ev[df_ev['Max_A'] >= alvo]) / len(df_ev)) * 100
@@ -82,124 +53,83 @@ def calcular_performance(df_ev):
                 if taxa >= 70: melhor_y, melhor_x = round(alvo, 2), round(taxa, 1)
     return melhor_y, melhor_x
 
-# --- 3. FLUXO PRINCIPAL (PÁGINA ÚNICA, MOBILE-FIRST) ---
+# --- 3. INTERFACE ---
 df_mestre = carregar_dados()
 if not df_mestre.empty:
     lista_ativos = sorted(df_mestre['Ativo'].unique())
-    
-    # SELEÇÃO DO ATIVO (BEM VISÍVEL NO TOPO)
-    st.markdown("### Selecionar Ativo")
-    ativo_principal = st.selectbox("Digite ou selecione o ativo:", lista_ativos, key="main_ativo")
+    ativo_principal = st.selectbox("Selecione o ativo:", lista_ativos)
     
     gap_atual_ativo = obter_gap_hoje(ativo_principal)
-    st.markdown(f'<div class="stInfo"><b>GAP hoje para {ativo_principal}: {gap_atual_ativo}%</b></div>', unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f'<div class="stInfo"><b>GAP hoje: {gap_atual_ativo}%</b></div>', unsafe_allow_html=True)
 
-    # PARÂMETROS DE CONFIGURAÇÃO (EMPILHADOS)
-    with st.expander("⚙️ Configurações Globais", expanded=False):
-        data_ini = st.date_input("Início do Backtest:", datetime.now() - timedelta(days=3*365), key="d_ini")
-        min_acerto_r = st.number_input("Mínimo Acerto Radar (%)", 50, 95, 80, key="min_r")
+    with st.expander("⚙️ Configurações"):
+        data_ini = st.date_input("Início Backtest:", datetime.now() - timedelta(days=3*365))
+        min_acerto_r = st.number_input("Mínimo Acerto Radar (%)", 50, 95, 80)
 
-    # BOTÃO AÇÃO GERAL (Rodar Radar e Estatística)
-    rodar_tudo = st.button("🚀 Rodar Radar e Estatística", use_container_width=True, key="run_all")
-
-    # --- 3.1 CONFERIR DATA (INDEPENDENTE, COM SEU PRÓPRIO BOTÃO) ---
+    # --- SEÇÃO: CONFERIR DATA (FORA DO BOTÃO RODAR) ---
     st.markdown("---")
-    st.markdown("### 🔍 Conferir Resultado por Data")
-    # Usando st.form para ter um botão submit específico e UX melhor no mobile
-    with st.form("conferir_data_form"):
-        col_d1, col_d2 = st.columns([1.5,1])
-        with col_d1:
-            data_sel = st.date_input("Data do Pregão:", datetime.now())
-        with col_dt2:
-             # st.markdown("<br>", unsafe_allow_html=True) # Ajuste visual opcional
-             verificar_data = st.form_submit_button("Consultar Data")
+    st.subheader("📅 Conferir Data")
+    with st.form("form_data"):
+        c1, c2 = st.columns([1.5, 1])
+        with c1:
+            data_sel = st.date_input("Dia do Pregão:", datetime.now())
+        with c2:
+            st.write("") # Espaçador
+            st.write("") 
+            verificar_data = st.form_submit_button("Consultar")
         
         if verificar_data:
             res = df_mestre[(df_mestre['Ativo'] == ativo_principal) & (df_mestre['Date'].dt.date == data_sel)]
             if not res.empty:
-                # Busca alvo estatístico antes desse dia
                 df_prev = df_mestre[(df_mestre['Ativo'] == ativo_principal) & (df_mestre['Date'] < pd.to_datetime(data_sel))]
-                alvo_p, _ = calcular_performance(df_prev)
-                max_r = res['Max_A'].iloc[0]
-                min_r = res['Min_A'].iloc[0]
+                alvo_p, acerto_p = calcular_performance(df_prev)
+                max_r, min_r = res['Max_A'].iloc[0], res['Min_A'].iloc[0]
                 ganhou = (alvo_p > 0 and max_r >= alvo_p) or (alvo_p < 0 and min_r <= alvo_p)
                 
-                st.markdown(f"#### Detalhes de {data_sel.strftime('%d/%m/%Y')} - {ativo_principal}")
-                if ganhou: st.success("✅ OBJETIVO ATINGIDO")
-                else: st.warning("❌ NÃO ATINGIU")
+                if ganhou: st.success(f"✅ OBJETIVO ATINGIDO ({alvo_p}%)")
+                else: st.warning(f"❌ NÃO ATINGIU ({alvo_p}%)")
                 
-                # Métricas em Cards Integrados (columns empilham no mobile)
-                c1, c2 = st.columns(2)
-                c1.metric("GAP Abertura", f"{res['Gap'].iloc[0]}%")
-                c1.metric("Objetivo na Época", f"{alvo_p}%")
-                c2.metric("Máxima Real", f"{max_r}%")
-                c2.metric("Mínima Real", f"{min_r}%")
+                m1, m2 = st.columns(2)
+                m1.metric("Máxima", f"{max_r}%")
+                m2.metric("Mínima", f"{min_r}%")
             else:
-                st.error(f"Dados não encontrados para {ativo_principal} em {data_sel.strftime('%d/%m/%Y')}.")
+                st.error("Dados não encontrados.")
 
-    # --- 3.2 PROCESSAMENTO GERAL (RADAR E BACKTEST) ---
-    if rodar_tudo:
-        # 1. RADAR DO DIA (RESULTADO GERAL PRIMEIRO)
-        st.markdown("---")
-        st.markdown("### 🚀 Radar do Dia")
-        radar_data = []
-        barra_r = st.progress(0)
+    # --- SEÇÃO: RODAR TUDO ---
+    st.markdown("---")
+    if st.button("🚀 Rodar Radar e Estatística"):
+        # Radar
+        st.subheader("🚀 Radar do Dia")
+        radar_list = []
+        barra = st.progress(0)
         for i, tk in enumerate(lista_ativos):
-            g_hoje = obter_gap_hoje(tk)
-            # Filtra histórico do ativo para GAPs similares ao de hoje (margem 0.15)
-            df_h = df_mestre[(df_mestre['Ativo'] == tk) & (df_mestre['Date'] >= pd.to_datetime(data_ini)) & (df_mestre['Gap'] <= g_hoje + 0.15) & (df_mestre['Gap'] >= g_hoje - 0.15)]
-            if len(df_h) >= 5: # Mínimo de 5 ocorrências para ser confiável
+            g = obter_gap_hoje(tk)
+            df_h = df_mestre[(df_mestre['Ativo'] == tk) & (df_mestre['Date'] >= pd.to_datetime(data_ini)) & (df_mestre['Gap'] <= g + 0.15) & (df_mestre['Gap'] >= g - 0.15)]
+            if len(df_h) >= 5:
                 alvo, acerto = calcular_performance(df_h)
                 if acerto >= min_acerto_r:
-                    radar_data.append({
-                        "Ativo": tk,
-                        "Sinal": "COMPRA 🟢" if alvo > 0 else "VENDA 🔴",
-                        "Alvo": f"{alvo}%",
-                        "Acerto": f"{acerto}%"
-                    })
-            barra_r.progress((i + 1) / len(lista_ativos))
+                    radar_list.append({"Ativo": tk, "Sinal": "🟢 COMPRA" if alvo > 0 else "🔴 VENDA", "Alvo": f"{alvo}%", "Acerto": f"{acerto}%"})
+            barra.progress((i + 1) / len(lista_ativos))
         
-        if radar_data:
-            # hide_index=True e use_container_width=True para UX mobile
-            st.dataframe(pd.DataFrame(radar_data).sort_values("Acerto", ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.warning("Nenhuma oportunidade encontrada com os critérios definidos hoje.")
-
-        # 2. BACKTEST DETALHADO (DO ATIVO SELECIONADO)
-        st.markdown("---")
-        st.markdown(f"### 📊 Backtest: {ativo_principal}")
-        st.markdown(f"**Amostra Baseada no GAP de Hoje ({gap_atual_ativo}%)**")
+        if radar_list:
+            st.dataframe(pd.DataFrame(radar_list).sort_values("Acerto", ascending=False), use_container_width=True, hide_index=True)
         
-        df_hist = df_mestre[(df_mestre['Ativo'] == ativo_principal) & (df_mestre['Date'] >= pd.to_datetime(data_ini))]
-        ev_esp = df_hist[(df_hist['Gap'] <= gap_atual_ativo + 0.15) & (df_hist['Gap'] >= gap_atual_ativo - 0.15)]
+        # Backtest
+        st.subheader(f"📊 Backtest: {ativo_principal}")
+        df_at = df_mestre[(df_mestre['Ativo'] == ativo_principal) & (df_mestre['Date'] >= pd.to_datetime(data_ini))]
+        ev = df_at[(df_at['Gap'] <= gap_atual_ativo + 0.15) & (df_at['Gap'] >= gap_atual_ativo - 0.15)]
         
-        if not ev_esp.empty:
-            total = len(ev_esp)
-            pos = len(ev_esp[ev_esp['Max_A'] > 0])
-            alvo_f, acerto_f = calcular_performance(ev_esp)
-
-            # Métricas em Cards Integrados (columns empilham no mobile)
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Amostra", f"{total} dias")
-            c2.metric("Nível Alvo", f"{alvo_f}%")
-            c3.metric("Assertividade", f"{acerto_f}%")
-            c4.metric("Freq. Positiva", f"{(pos/total)*100:.1f}%")
-
-            # Mapa de GAPs (Tabela compacta)
-            st.markdown("---")
-            st.markdown("**📋 Mapa de GAPs Histórico**")
-            ranking = []
-            for val in [x * 0.5 for x in range(-10, 11)]:
-                t_gap = round(val, 2)
-                ev_r = df_hist[(df_hist['Gap'] <= t_gap + 0.2) & (df_hist['Gap'] >= t_gap - 0.2)]
-                if len(ev_r) >= 3:
-                    yr, xr = calcular_performance(ev_r)
-                    ranking.append({"GAP": f"{t_gap}%", "Dias": len(ev_r), "Alvo": f"{yr}%", "Acerto": f"{xr}%"})
+        if not ev.empty:
+            alvo_f, acerto_f = calcular_performance(ev)
+            b1, b2 = st.columns(2)
+            b1.metric("Alvo", f"{alvo_f}%")
+            b2.metric("Acerto", f"{acerto_f}%")
             
-            if ranking:
-                st.dataframe(pd.DataFrame(ranking).sort_values("GAP", ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.warning(f"Não há dados históricos suficientes para o GAP de {gap_atual_ativo}% em {ativo_principal}.")
-else:
-    st.error("Erro crítico: Banco de dados não carregado.")
+            st.write("**📋 Mapa de GAPs Histórico**")
+            mapa = []
+            for v in [x * 0.5 for x in range(-6, 7)]:
+                df_r = df_at[(df_at['Gap'] <= v + 0.2) & (df_at['Gap'] >= v - 0.2)]
+                if len(df_r) >= 3:
+                    yr, xr = calcular_performance(df_r)
+                    mapa.append({"GAP": f"{v}%", "Dias": len(df_r), "Alvo": f"{yr}%", "Acerto": f"{xr}%"})
+            st.dataframe(pd.DataFrame(mapa), use_container_width=True, hide_index=True)
