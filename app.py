@@ -42,9 +42,9 @@ def calcular_performance(df_ev):
             for alvo in [x * -0.1 for x in range(1, 41)]:
                 taxa = (len(df_ev[df_ev['Min_A'] <= alvo]) / len(df_ev)) * 100
                 if taxa >= 70: melhor_y, melhor_x = round(alvo, 2), round(taxa, 1)
-    return melhor_y, mejor_x
+    return melhor_y, melhor_x # Corrigido aqui (estava mejor_x)
 
-# --- 2. ÁREA DE CONFIGURAÇÃO (DATA DE 3 ANOS FIXA) ---
+# --- 2. ÁREA DE CONFIGURAÇÃO ---
 st.subheader("Configurações do Backtest")
 df_mestre = carregar_banco_dados()
 
@@ -56,12 +56,10 @@ if not df_mestre.empty:
     cor_caixa = "#d4edda" if gap_atual >= 0 else "#f8d7da"
     st.markdown(f'<div style="background-color:{cor_caixa}; padding:10px; border-radius:10px; text-align:center; color: black; margin-bottom: 20px;"><b>GAP HOJE: {gap_atual}%</b></div>', unsafe_allow_html=True)
 
-    # Cálculo automático para 3 anos atrás
     data_3_anos_atras = datetime.now() - timedelta(days=3*365)
 
     col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1, 1])
     with col_cfg1:
-        # Agora inicia fixo em 3 anos atrás
         data_inicio = st.date_input("Data de Início:", data_3_anos_atras)
     with col_cfg2:
         gap_digitado = st.number_input("GAP desejado (%):", value=gap_atual, step=0.1)
@@ -70,22 +68,35 @@ if not df_mestre.empty:
 
     rodar = st.button('🚀 Rodar Estatística e Radar', use_container_width=True)
 
-    # --- 3. PROCESSAMENTO DOS RESULTADOS ---
     if rodar:
         df_ativo = df_mestre[(df_mestre['Ativo'] == ativo) & (df_mestre['Date'] >= pd.to_datetime(data_inicio))]
         
         if not df_ativo.empty:
-            # Resumo Estratégico
+            # 3. RESUMO ESTRATÉGICO
             ev_esp = df_ativo[(df_ativo['Gap'] <= gap_digitado + 0.15) & (df_ativo['Gap'] >= gap_digitado - 0.15)]
             if not ev_esp.empty:
                 st.markdown(f"### 🎯 Resumo Estratégico: {ativo}")
+                
+                total = len(ev_esp)
+                pos_count = len(ev_esp[ev_esp['Max_A'] > 0])
+                neg_count = len(ev_esp[ev_esp['Min_A'] < 0])
+                alvo_n, acerto_n = calcular_performance(ev_esp)
+
+                # Linha 1: Extremos
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Maior Alta", f"{ev_esp['Max_A'].max():.2f}%")
                 c2.metric("Maior Mínima", f"{ev_esp['Min_A'].min():.2f}%")
                 c3.metric("Fech. Médio Alta", f"{ev_esp[ev_esp['Fech_Apos_Abertura']>0]['Fech_Apos_Abertura'].mean():.2f}%")
                 c4.metric("Fech. Médio Baixa", f"{ev_esp[ev_esp['Fech_Apos_Abertura']<0]['Fech_Apos_Abertura'].mean():.2f}%")
 
-            # Mapa de GAPs
+                # Linha 2: Frequência e Nível
+                st.markdown("---")
+                f1, f2, f3 = st.columns(3)
+                f1.metric("Frequência Positiva", f"{pos_count} dias", f"{(pos_count/total)*100:.1f}%")
+                f2.metric("Frequência Negativa", f"{neg_count} dias", f"-{(neg_count/total)*100:.1f}%")
+                f3.metric("Nível (70% Acerto)", f"{alvo_n}%", f"Probabilidade: {acerto_n}%")
+
+            # 4. MAPA DE GAPS
             st.markdown("---")
             st.subheader("📋 Mapa de GAPs (+5% a -5%)")
             ranking = []
@@ -97,21 +108,19 @@ if not df_mestre.empty:
                     ranking.append({"GAP": f"{t_gap}%", "Dias": len(ev_r), "Alvo": f"{yr}%", "Acerto": f"{xr}%", "Direção": "Alta" if yr > 0 else "Baixa"})
             if ranking: st.table(pd.DataFrame(ranking).sort_values(by="GAP", ascending=False))
 
-            # Verificar Resultado por Data
+            # 5. PESQUISAR POR DATA (Sua solicitação)
             st.markdown("---")
             st.subheader("🔍 Verificar Resultado por Data")
             col_dt1, col_dt2 = st.columns([2, 1])
             with col_dt1:
-                data_alvo = st.date_input("Escolha a data para conferir:", datetime.now())
+                data_alvo = st.date_input("Escolha a data:", datetime.now())
             with col_dt2:
                 if st.button('📅 Conferir Data', use_container_width=True):
-                    resultado_data = df_ativo[df_ativo['Date'].dt.date == data_alvo]
-                    if not resultado_data.empty:
-                        st.write(resultado_data[['Date', 'Ativo', 'Gap', 'Max_A', 'Min_A', 'Close']])
-                    else:
-                        st.warning("Nenhum dado encontrado.")
+                    res = df_ativo[df_ativo['Date'].dt.date == data_alvo]
+                    if not res.empty: st.write(res[['Date', 'Ativo', 'Gap', 'Max_A', 'Min_A', 'Close']])
+                    else: st.warning("Sem dados.")
 
-            # Radar de Elite
+            # 6. RADAR DE ELITE
             st.markdown("---")
             st.subheader(f"🚀 Radar de Elite (> {filtro_radar}% Acerto)")
             radar_resumo = []
@@ -125,9 +134,9 @@ if not df_mestre.empty:
                         radar_resumo.append({"Ativo": tk, "Direção": "Alta 🟢" if yr > 0 else "Baixa 🔴", "GAP": f"{g_tk}%", "Acerto": f"{xr}%", "Alvo": f"{yr}%"})
             if radar_resumo: st.table(pd.DataFrame(radar_resumo))
 
-            # Histórico Visual (Gráfico)
+            # 7. GRÁFICO
             st.markdown("---")
             st.subheader(f"📊 Histórico Visual - {ativo}")
             st.plotly_chart(px.bar(df_ativo.tail(50), x='Date', y=['Max_A', 'Min_A'], barmode='group'), use_container_width=True)
 else:
-    st.error("Erro ao carregar banco de dados.")
+    st.error("Erro no carregamento.")
