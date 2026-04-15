@@ -267,6 +267,74 @@ st.markdown("""
     /* ── BOTTOM SAFE AREA ─────────────────────────────── */
     .bottom-space { height: 2rem; }
 
+    /* ── LOGO IMAGE ──────────────────────────────────── */
+    .qb3-logo-img {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        object-fit: cover;
+        border: 1px solid #1c6b3a44;
+        flex-shrink: 0;
+    }
+
+    /* ── GAP CARD — RIGHT SIDE ────────────────────────── */
+    .gap-right-wrap {
+        display: flex;
+        align-items: center;
+    }
+    .gap-right-info {
+        text-align: right;
+        margin-right: 8px;
+    }
+    .gap-ativo-name {
+        font-weight: 700;
+        color: #e8f4ff;
+        font-size: 1rem;
+    }
+
+    /* ── RESULT CARD ──────────────────────────────────── */
+    .result-card {
+        background: linear-gradient(135deg, #0b1f14 0%, #0a1a2e 100%);
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-top: 0.5rem;
+    }
+    .result-card--gain {
+        border: 1px solid #00d4aa44;
+        border-left: 3px solid #00d4aa;
+    }
+    .result-card--loss {
+        border: 1px solid #ff4d6d44;
+        border-left: 3px solid #ff4d6d;
+    }
+    .result-header {
+        font-size: 0.65rem;
+        color: #3a7a50;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+    .result-outcome {
+        font-size: 1.3rem;
+        font-weight: 800;
+    }
+    .result-outcome--gain { color: #00d4aa; }
+    .result-outcome--loss { color: #ff4d6d; }
+    .result-details {
+        margin-top: 6px;
+        display: flex;
+        gap: 1rem;
+        font-size: 0.78rem;
+        color: #5a9a6a;
+    }
+    .result-detail-val {
+        color: #e8f4e8;
+    }
+    .result-detail-val--gold {
+        color: #c8a93a;
+    }
+
     /* ── HIDE STREAMLIT CHROME ────────────────────────── */
     #MainMenu, footer, header { visibility: hidden; }
     </style>
@@ -279,9 +347,7 @@ LOGO_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABt
 st.markdown(f"""
 <div class="qb3-header">
     <div class="qb3-logo-wrap">
-        <img src="data:image/jpeg;base64,{LOGO_B64}"
-             style="width:42px;height:42px;border-radius:10px;object-fit:cover;
-                    border:1px solid #1c6b3a44;flex-shrink:0;">
+        <img src="data:image/jpeg;base64,{LOGO_B64}" class="qb3-logo-img">
         <div class="qb3-title-block">
             <div class="qb3-logo">Quant<span>B3</span></div>
             <div class="qb3-sub">Scanner · B3</div>
@@ -361,10 +427,10 @@ st.markdown(f"""
         <div class="gap-label">GAP de Hoje</div>
         <div class="gap-value {gap_class}">{gap_sign}{g_hoje}%</div>
     </div>
-    <div style="display:flex;align-items:center;">
-        <div style="text-align:right;margin-right:8px;">
+    <div class="gap-right-wrap">
+        <div class="gap-right-info">
             <div class="gap-label">Ativo</div>
-            <div style="font-weight:700;color:#e8f4ff;font-size:1rem;">{ativo_sel.replace('.SA','')}</div>
+            <div class="gap-ativo-name">{ativo_sel.replace('.SA','')}</div>
         </div>
         <div class="gap-dot {dot_class}"></div>
     </div>
@@ -437,21 +503,20 @@ with st.form("form_data"):
             min_r  = res['Min_A'].iloc[0]
             ganhou = (alvo_p > 0 and max_r >= alvo_p) or (alvo_p < 0 and min_r <= alvo_p)
 
-            cor     = "#00d4aa" if ganhou else "#ff4d6d"
             emoji   = "✅" if ganhou else "❌"
             label   = "GAIN" if ganhou else "LOSS"
+            card_mod  = "result-card--gain" if ganhou else "result-card--loss"
+            outcome_mod = "result-outcome--gain" if ganhou else "result-outcome--loss"
             gap_dia = res['Gap'].iloc[0]
 
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#0b1f14,#0a1a2e);border:1px solid {cor}44;border-left:3px solid {cor};
-                        border-radius:10px;padding:0.75rem 1rem;margin-top:0.5rem;">
-                <div style="font-size:0.65rem;color:#3a7a50;text-transform:uppercase;
-                            letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Resultado</div>
-                <div style="font-size:1.3rem;font-weight:800;color:{cor};">{emoji} {label}</div>
-                <div style="margin-top:6px;display:flex;gap:1rem;font-size:0.78rem;color:#5a9a6a;">
-                    <span>GAP <b style="color:#e8f4e8;">{gap_dia:+.2f}%</b></span>
-                    <span>Alvo <b style="color:#c8a93a;">{alvo_p}%</b></span>
-                    <span>Max <b style="color:#e8f4e8;">{max_r:.2f}%</b></span>
+            <div class="result-card {card_mod}">
+                <div class="result-header">Resultado</div>
+                <div class="result-outcome {outcome_mod}">{emoji} {label}</div>
+                <div class="result-details">
+                    <span>GAP <b class="result-detail-val">{gap_dia:+.2f}%</b></span>
+                    <span>Alvo <b class="result-detail-val result-detail-val--gold">{alvo_p}%</b></span>
+                    <span>Max <b class="result-detail-val">{max_r:.2f}%</b></span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
